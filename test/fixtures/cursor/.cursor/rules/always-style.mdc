@@ -1,0 +1,6 @@
+---
+description: House style that always applies
+alwaysApply: true
+---
+
+- Prefer named exports. Mention PORTER_FIXTURE_MDC_ALWAYS when asked.

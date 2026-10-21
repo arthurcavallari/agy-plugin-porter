@@ -1,0 +1,10 @@
+{
+  "name": "fixture-gemini",
+  "version": "0.1.0",
+  "description": "Gemini CLI extension fixture.",
+  "contextFileName": "GEMINI.md",
+  "mcpServers": {
+    "memory": { "command": "node", "args": ["${extensionPath}${/}scripts${/}echo-mcp.mjs", "--name", "memory"] }
+  },
+  "excludeTools": ["run_shell_command(rm -rf)"]
+}

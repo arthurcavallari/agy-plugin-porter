@@ -1,0 +1,18 @@
+{
+  "customModes": [
+    {
+      "slug": "fixture-architect",
+      "name": "🏗️ Fixture Architect",
+      "roleDefinition": "You are a software architect who plans before coding.",
+      "whenToUse": "Use when a task needs a design before implementation.",
+      "customInstructions": "Write the plan to plan.md. Mention PORTER_FIXTURE_ROO_MARKER.",
+      "groups": ["read", ["edit", { "fileRegex": "\.md$", "description": "Markdown only" }], "command", "mcp"]
+    },
+    {
+      "slug": "fixture-orchestrator",
+      "name": "🪃 Fixture Orchestrator",
+      "roleDefinition": "You coordinate subtasks by delegating to other modes.",
+      "groups": []
+    }
+  ]
+}

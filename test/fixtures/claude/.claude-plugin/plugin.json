@@ -1,0 +1,11 @@
+{
+  "name": "fixture-claude",
+  "version": "0.1.0",
+  "description": "Claude Code fixture exercising every porter translation path.",
+  "author": { "name": "Fixture Author", "email": "fixture@example.com" },
+  "homepage": "https://example.com/fixture-claude",
+  "keywords": ["fixture"],
+  "mcpServers": {
+    "inline-echo": { "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/echo-mcp.mjs"] }
+  }
+}

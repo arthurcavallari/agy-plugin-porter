@@ -1,0 +1,4 @@
+description = "Greets the user by name."
+prompt = """
+Say hello to {{args}} and mention PORTER_FIXTURE_TOML_MARKER.
+"""

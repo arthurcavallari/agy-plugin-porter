@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "github": { "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/echo-mcp.mjs", "--name", "github"] }
+  }
+}

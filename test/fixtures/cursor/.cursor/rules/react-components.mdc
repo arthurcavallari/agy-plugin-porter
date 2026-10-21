@@ -1,0 +1,8 @@
+---
+description: Conventions for React components
+globs: src/components/**/*.tsx
+alwaysApply: false
+---
+
+- Components are function components with typed props.
+- Mention PORTER_FIXTURE_MDC_GLOB when asked.

@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "BeforeTool": [
+      { "matcher": "run_shell_command", "hooks": [ { "type": "command", "command": "node ${extensionPath}/scripts/log-hook.mjs gemini-before-tool" } ] }
+    ],
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "node ${extensionPath}/scripts/log-hook.mjs gemini-session-start" } ] }
+    ]
+  }
+}
