@@ -101,6 +101,22 @@ The validator doesn't know `NotebookRead`, `BashOutput`, `KillShell`, `SlashComm
 
 Live CLI tool args: `run_command` `{CommandLine, WaitMsBeforeAsync, toolSummary}`, `write_file` `{Path, Content, Overwrite}`, `read_file` `{Path}`, `edit_file` `{Path, Target, Replacement}`. The IDE-named tools' args are unverified.
 
+## Rules and agents in plugins
+
+These come from Phase 1 checks on agy 1.4.5, in a throwaway home.
+
+| Item | Result | Evidence |
+| :-- | :-- | :-- |
+| `rules/AGENTS.md`, no frontmatter | Always on | Live: marker in context |
+| Other `rules/*.md` | Need `trigger`: `always_on`, `model_decision`, `glob` or `manual`. `globs` is a string (a YAML list is an error). | Validator |
+| `trigger: always_on` | Always on | Live |
+| `trigger: model_decision` | Listed as a conditional rule with its description. The agent reads it on demand. | Live |
+| `trigger: glob` | **Never applied** from a plugin. Five glob shapes were tried, on both view and edit of a matching file. | Live (the validator accepts it) |
+| `trigger: manual` | Never surfaced | Live |
+| Agent `model` | `pro`, `flash`, `flash_lite`, `inherit` (any case). `sonnet` and the like make the loader skip the agent. | Validator |
+| Agent `tools` | A list. Unknown names aren't rejected. | Validator |
+| Agent `mainAgent`/`subagent`/`inheritMcp` | Accepted. Agents with `subagent: true` appear in the subagent list. | Live |
+
 ## What this means for the porter
 
 **Delete from scope (agy or the runtime already does it):**

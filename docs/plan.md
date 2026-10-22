@@ -13,7 +13,7 @@ These override the blueprint wherever they conflict:
 3. **Not every event has an equivalent.** Antigravity has `SessionStart`, `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation` and `Stop`. Claude's `UserPromptSubmit`, `Notification`, `SubagentStop` and `PreCompact` have no equivalent. They are reported as unported.
 4. **Output contracts differ.** `SessionStart` and `PreInvocation` output uses `injectSteps` (`systemMessage` is a nested object). Claude's exit code 2 becomes `{"decision":"deny","reason":stderr}`. `Stop` blocking becomes `{"decision":"continue"}`.
 5. **A plugin can contain a sidecar, at `sidecars/<id>/sidecar.json`.** *(Corrected 2026-10-22. An earlier version of this plan said it couldn't.)* Antigravity's official `science` plugin 1.3.0 ships `sidecars/biomolecular_structure_viewer/` with `has_web_ui: true` and a `SIDECAR_UI_ENTRYPOINT_AUX_PANE` view. The built-in `ui-plugin-navigation` skill lists `~/.gemini/config/plugins/<plugin>/sidecars/` as a sidecar root, with the id namespaced as `<plugin>/<folder>`. So blueprint §4.1's nesting is allowed. This matters for UI mods: a ported mod's pane can ship inside the plugin (see [Claude Code UI mods](#claude-code-ui-mods-spike-then-decide)). What's still **unverified** is whether `agy plugin install` copies `sidecars/` and whether `agy plugin validate` accepts it. The UI-mod spike checks both. Until then, Phase 4 keeps the cockpit as a separate sidecar. Hangar's `inspectSidecarDirectory` (`lib/package-installer.mjs:125`) requires `sidecar.json` at the root, so a standalone sidecar still needs a `release.path` subdirectory in the registry.
-6. **`plugin.json` allows 7 keys only**: `name`, `displayName`, `description`, `version`, `logo` (a relative image path), `suggestedPrompts` (≤3) and `disabled`. Agents live at `agents/<id>/agent.md` with frontmatter, as in `~/.gemini/config/plugins/antigravity-help/agents/agy-help/agent.md`.
+6. **`plugin.json` allows 7 keys only**: `name`, `displayName`, `description`, `version`, `logo` (a relative image path), `suggestedPrompts` (≤3) and `disabled`. Agents live at `agents/<name>.md` (the built-in plugin skill's layout; `agents/<id>/agent.md` also loads), with `tools` as a list of agy tool names and `model` as an agy tier (`pro`, `flash`, `flash_lite`, `inherit`). Anything else makes agy 1.4.x skip the agent.
 7. **The platform already covers part of this.** `agy plugin import [gemini|claude]` and `agy plugin install <dir>` exist. `agy plugin validate <dir>` is a free correctness oracle, so use it in tests and CI. Phase 0 measures exactly what agy already handles, so the porter adds only the rest.
 
 ## Approach
@@ -60,25 +60,49 @@ Layout follows blueprint §4.2, with the cockpit moved out of the plugin. Node �
 ```
 agy-plugin-porter/
   package.json            # bin: agy-porter; exports ./lib/index.mjs
-  lib/detector.mjs        # which ecosystem(s) a dir contains
+  lib/detector.mjs        # which ecosystem(s) a dir contains; UI mods; manifest-less Claude plugins
   lib/manifest-sanitizer.mjs   # → 7-key plugin.json; rescues inline mcpServers;
                                # ${CLAUDE_PLUGIN_ROOT} → ${PLUGIN_ROOT} in MCP args/env/cwd
   lib/hook-compiler.mjs   # restructure + matcher remap + wrap commands with shim
-  lib/skill-compiler.mjs  # commands/*.toml, commands/*.md, .mdc → skills/<id>/SKILL.md
-  lib/mode-compiler.mjs   # .roomodes/.kilocodemodes/Claude agents → agents/<id>/agent.md
+  lib/skill-compiler.mjs  # cleans the skills agy made from commands; native and Codex skills
+  lib/rules-compiler.mjs  # CLAUDE.md/GEMINI.md/AGENTS.md, .mdc, .cursorrules, Roo rules → rules/ (or skills/)
+  lib/mode-compiler.mjs   # .roomodes/.kilocodemodes/Claude agents → agents/<name>.md
   lib/static-auditor.mjs  # Unicode tag strip (U+E0000–E007F), curl|sh / base64 / entropy flags,
                           # 24 KB per-rule + 20k-token aggregate budget, tier inference
-  lib/transpiler-engine.mjs    # detect → compile → audit → write to out dir; returns report
+  lib/transpiler-engine.mjs    # detect → stage (agy, throwaway home) → compile → audit → write
   lib/index.mjs           # public API: portPackage({srcDir, outDir, slug}) → {report, tier}
-  bin/agy-porter.mjs      # agy-porter --source <path|owner/repo@ref> --slug <s> [--out] [--install]
+  lib/source.mjs          # local path, or owner/repo@ref fetched with git
+  lib/tool-map.mjs        # Claude/Gemini/Roo tool names → agy tool names
+  lib/yaml-lite.mjs       # YAML subset for frontmatter and .roomodes (no dependency)
+  bin/agy-porter.mjs      # agy-porter --source <path|owner/repo@ref> [--path] [--slug] [--out]
+                          #   [--validate] [--install] [--json]
   scripts/hook-shim.mjs   # runtime bridge, shipped INTO each ported plugin
                           # (with the compiler's scripts/hook-shim.json)
   test/fixtures/{claude,claude-mod,gemini,cursor,roo,codex,agy-probe}/
 ```
-- **Port report.** Every run returns `{ported:[], unported:[{item, reason}], warnings:[], tier}`. Nothing is dropped silently.
-- **Rules budget.** `CLAUDE.md` and `GEMINI.md` become `rules/AGENTS.md` only if they fit the budget. Glob-scoped `.mdc` files become skills (progressive disclosure), and only `alwaysApply: true` files go to rules.
+- **Port report.** Every run returns `{ported:[], unported:[{item, reason}], warnings:[], flags:[], tier}`. Nothing is dropped silently.
+- **Rules budget.** `CLAUDE.md`, `GEMINI.md` and Codex's `AGENTS.md` become `rules/AGENTS.md` only if they fit the 24 KB per-rule limit. Cursor `.mdc` files map by kind:
+  - `alwaysApply: true` → an `always_on` rule
+  - description only → a `model_decision` rule (agy lists it with its description, live)
+  - glob-scoped or manual → a skill (progressive disclosure). agy 1.4.5 never applies a plugin's `glob` or `manual` rules (live, on view and edit), even though `validate` accepts them.
 - **Tier inference** reuses the meaning of Hangar's `TIER_*`: any hook or command execution means Tier 2, and subagent or cascade control means Tier 3.
 - **UI-mod detection.** Claude Code UI mods use the same `hooks/hooks.json` file name as classic hooks, but in a different shape: `{"modules":["./register.tsx"]}`. The module is a TS/TSX file that runs inside Claude Code. `detector.mjs` flags any `hooks.json` with a `modules` key as a UI mod. `hook-compiler.mjs` must not treat that as a classic hook config. If a file has both `modules` and `hooks`, it compiles the `hooks` part and leaves `modules` alone. Each module is reported as `unported: {item: "ui-mod:<path>", reason: "Claude Code UI mods are not ported yet"}`. Nothing is copied or run. Phase 5's listing rule treats an unported UI mod like an unported hook, so a mod plugin isn't listed until a mod compiler exists. Add a `test/fixtures/claude-mod/` fixture: one pane, one `tool.call` hook and one status-line call.
+
+### Phase 1 outcome (2026-10-22, agy 1.4.5)
+Built as listed above. `npm test` runs 55 tests. The 7 that need agy (Claude/Gemini staging and `validate`) skip when it isn't on PATH. Every fixture's output passes `agy plugin validate` with no errors or warnings, apart from the probe's one intentional warning. Every run uses a throwaway home.
+- **Live, in a throwaway home:**
+  - the ported always-on rules from all five ecosystems reach context
+  - the ported Claude agent and Roo modes appear as subagents
+  - skills and MCP servers load, including the rescued inline one
+  - a Cursor glob rule ported as a skill is chosen by its description
+- **Real upstreams:** all 40 plugins in the local `claude-plugins-official` cache were ported. 28 pass `validate` with 0 errors. 2 of those have a validator warning, for a skill over 24 KB, which the report also flags. The other 12 are LSP-only entries with nothing to port.
+- **Decisions beyond the plan:**
+  - a Roo edit group restricted by `fileRegex` isn't granted, since agy can't scope edits, so it's reported rather than widened
+  - Claude `opus`/`sonnet` map to `pro` and `haiku` to `flash`
+  - `PostToolUseFailure` maps onto agy's PostToolUse, with the shim gating on agy's `error` field
+  - manifest-less Claude plugins get a stand-in manifest for staging
+  - UI-mod module files are removed from the output
+- **Dependency on agy:** Claude and Gemini sources need `agy` on PATH, per the re-scope. Cursor, Roo and Codex sources don't.
 
 ### Phase 2: Hook shim (`scripts/hook-shim.mjs`)
 - Invocation: `node scripts/hook-shim.mjs --event PreToolUse --hook <id>`, cwd-relative and unquoted. agy mangles quoted arguments on Windows and doesn't expand variables in hook commands, so nothing from the original command goes on agy's command line. The compiler writes each original command to `scripts/hook-shim.json` under its id. The shim expands `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PROJECT_DIR}`, `${extensionPath}` and `${/}` itself, then spawns the command through Node's shell, which quotes correctly. That makes spaces and quotes in the original command safe, so they don't need rejecting. The shim sets `CLAUDE_PLUGIN_ROOT` to the plugin root (its own parent directory) and `CLAUDE_PROJECT_DIR` to `workspacePaths[0]`.

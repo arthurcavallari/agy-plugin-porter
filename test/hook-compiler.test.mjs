@@ -129,11 +129,12 @@ test('writeHookPort replaces the staged foreign hooks and ships the shim', () =>
   assert.ok(JSON.parse(readFileSync(join(dir, 'hooks.json'), 'utf8'))['fixture-claude']);
 });
 
-test('writeHookPort keeps a UI-mod hooks/hooks.json and refuses to clobber a foreign shim', () => {
+test('writeHookPort drops a UI-mod hooks.json (mods are reported, never copied) and refuses to clobber a foreign shim', () => {
   const dir = mkdtempSync(join(tmpdir(), 'porter-write-'));
   cpSync(fixture('claude-mod'), dir, { recursive: true });
+  cpSync(join(dir, 'hooks/hooks.json'), join(dir, 'hooks.json'));
   writeHookPort(dir, compileHooks(detect(dir).hookSources, { slug: 'm' }));
-  assert.ok(existsSync(join(dir, 'hooks/hooks.json')));
+  assert.equal(existsSync(join(dir, 'hooks/hooks.json')), false);
   assert.equal(existsSync(join(dir, 'hooks.json')), false);
 
   const other = mkdtempSync(join(tmpdir(), 'porter-write-'));

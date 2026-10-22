@@ -75,6 +75,7 @@ export function toSourcePayload(entry, payload) {
     case 'PreToolUse':
       return { ...base, ...toSourceTool(payload.toolCall, entry.dialect) };
     case 'PostToolUse':
+      if (entry.sourceEvent === 'PostToolUseFailure') return { ...base, ...toSourceTool(payload.toolCall, entry.dialect), error: payload.error ?? '' };
       return { ...base, ...toSourceTool(payload.toolCall, entry.dialect), tool_response: payload.error ? { error: payload.error } : {} };
     case 'SessionStart':
       return { ...base, source: 'startup' };
@@ -97,6 +98,14 @@ export function expandCommand(command, vars) {
 
 const NO_OPINION = { PreToolUse: '' };
 export const noOpinion = (event) => NO_OPINION[event] ?? '{}';
+
+// agy has one PostToolUse with `error` set when the tool failed (empty on
+// success, live-tested). Claude splits it: PostToolUse runs on success only,
+// PostToolUseFailure on failure only.
+export function shouldRun(entry, payload) {
+  if (entry.event !== 'PostToolUse' || entry.dialect !== 'claude') return true;
+  return Boolean(payload.error) === (entry.sourceEvent === 'PostToolUseFailure');
+}
 
 function parseJson(text) {
   if (!text.startsWith('{')) return null;
@@ -209,6 +218,10 @@ async function main() {
     const config = JSON.parse(readFileSync(new URL('./hook-shim.json', import.meta.url), 'utf8'));
     const entry = config.hooks?.[hook];
     if (!entry) throw new Error(`no hook "${hook}" in hook-shim.json`);
+    if (!shouldRun(entry, payload)) {
+      process.stdout.write(out, () => process.exit(0));
+      return;
+    }
     const projectDir = payload.workspacePaths?.[0] ?? process.cwd();
     const vars = entry.dialect === 'gemini'
       ? { extensionPath: pluginRoot, GEMINI_PROJECT_DIR: projectDir, CLAUDE_PROJECT_DIR: projectDir }

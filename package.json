@@ -7,15 +7,27 @@
   "engines": {
     "node": ">=20"
   },
+  "bin": {
+    "agy-porter": "bin/agy-porter.mjs"
+  },
   "files": [
+    "bin/",
     "lib/",
     "scripts/"
   ],
   "exports": {
+    ".": "./lib/index.mjs",
     "./detector": "./lib/detector.mjs",
-    "./hook-compiler": "./lib/hook-compiler.mjs"
+    "./hook-compiler": "./lib/hook-compiler.mjs",
+    "./manifest-sanitizer": "./lib/manifest-sanitizer.mjs",
+    "./skill-compiler": "./lib/skill-compiler.mjs",
+    "./rules-compiler": "./lib/rules-compiler.mjs",
+    "./mode-compiler": "./lib/mode-compiler.mjs",
+    "./static-auditor": "./lib/static-auditor.mjs",
+    "./transpiler-engine": "./lib/transpiler-engine.mjs",
+    "./package.json": "./package.json"
   },
   "scripts": {
-    "test": "node --test test/detector.test.mjs test/hook-compiler.test.mjs test/hook-shim.test.mjs"
+    "test": "node --test test/yaml-lite.test.mjs test/detector.test.mjs test/hook-compiler.test.mjs test/hook-shim.test.mjs test/compilers.test.mjs test/transpiler.test.mjs"
   }
 }
