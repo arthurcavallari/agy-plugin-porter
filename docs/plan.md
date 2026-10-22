@@ -112,6 +112,13 @@ Built as listed above. `npm test` runs 55 tests. The 7 that need agy (Claude/Gem
 - Windows: spawn with `shell:true` only for the wrapped command, never for the shim. The shim strips the BOM and normalizes CRLF.
 
 ### Claude Code UI mods: spike, then decide
+> **Detailed plan:** [`phase-2.5-ui-mods-plan.md`](./phase-2.5-ui-mods-plan.md). It covers:
+> - a step 0 go/no-go gate: does a third-party plugin sidecar run in the desktop app at all?
+> - what's verified about agy plugin sidecars and Google's `science` sidecar
+> - the three-stage spike (`task-board`, `replay-theater`, `side-pane`)
+> - the runtime design: tool calls paused and resumed across hooks, per-conversation state, a capability gate
+> - the TS/JSX options
+
 A Claude Code UI mod is a TS/TSX module listed in `hooks/hooks.json` as `{"modules":[...]}`. It exports `register(on, options)` and runs inside Claude Code. It hooks events (`tool.call`, `prompt.submit`, `prompt.compose`, `command.run`, `ui.render`, `session.start`) and calls the host through `$` (`ui`, `state`, `store`, `tool`, `command`, `agent`, `model`, `fs`, `process`, `clock`). It draws host element trees (`Box`, `Text`, `Button`, `Markdown`, `Code`, `Image`, …) into **render sites**, on the terminal, desktop, VS Code and mobile surfaces. Antigravity has no matching module API. Its closest UI target is a plugin sidecar with a side-pane (aux pane) web view (correction #5). This phase runs after Phase 2, because a mod's `tool.call` hooks depend on the hook shim. Like Phase 0, it starts with a spike and a scorecard before any compiler code is written.
 
 **Spike: hand-port two mods, then write a scorecard (`docs/ui-mods-baseline.md`).**
