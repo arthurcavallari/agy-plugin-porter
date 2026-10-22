@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { test } from 'node:test';
@@ -119,7 +119,8 @@ test('e2e: bash-guard exit 2 becomes a JSON deny; allowed commands print nothing
   assert.equal(denied.status, 0);
   assert.deepEqual(JSON.parse(denied.stdout), { decision: 'deny', reason: 'bash-guard: blocked by fixture policy' });
   const logged = JSON.parse(denied.log.trim());
-  assert.equal(logged.pluginRoot, dir);
+  // Runners report temp dirs through symlinks (macOS /var) or 8.3 names (Windows).
+  assert.equal(realpathSync.native(logged.pluginRoot), realpathSync.native(dir));
   assert.equal(JSON.parse(logged.stdin).tool_input.command, 'echo porter-fixture-deny');
 
   const allowed = runShim(dir, 'PreToolUse', 'pretooluse-1', livePre('echo porter-fixture-allow'));

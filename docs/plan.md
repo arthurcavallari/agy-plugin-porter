@@ -183,7 +183,7 @@ A Claude Code UI mod is a TS/TSX module listed in `hooks/hooks.json` as `{"modul
 - Each entry must port with zero unported *hooks* (unported commands are acceptable) and pass `agy plugin validate`. If one doesn't, it isn't listed.
 
 ## Critical files
-- New repo: `C:\Users\arthu\IdeaProjects\agy-plugin-porter\` (everything above).
+- This repo, `agy-plugin-porter` (everything above).
 - Hangar: `lib/plugin-installer.mjs` (new), `lib/package-installer.mjs` (export the shared helpers), `lib/state-orchestrator.mjs`, `lib/registry-catalog.mjs` (handle `kind`/`port` in catalog merge and updates), `scripts/validate-registry.mjs`, `server.mjs`, `ui/components/marketplace-panes.js`, `ui/components/extensions-tab.js`, `registry.json`, `package.json`.
 - Backend docs: `docs/04-schemas-and-contracts.md` (registry `kind`/`port`/`release.path|ref`), `docs/plugins-to-port/agy-plugin-porter.md` (add a "Corrections" note linking to `docs/agy-baseline.md`), and `docs/05` (status).
 
