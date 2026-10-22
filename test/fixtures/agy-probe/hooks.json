@@ -1,0 +1,178 @@
+{
+  "probe-pre-json": {
+    "enabled": false,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/probe.mjs pre-json",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "probe-pre-empty-object": {
+    "enabled": false,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/probe.mjs pre-empty-object",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "probe-pre-allow": {
+    "enabled": false,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/probe.mjs pre-allow",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "probe-pre-exit1": {
+    "enabled": false,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/probe.mjs pre-exit1",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "probe-pre-exit2": {
+    "enabled": false,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/probe.mjs pre-exit2",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "probe-pre-empty": {
+    "enabled": false,
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/probe.mjs log",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "probe-post-exit1": {
+    "enabled": false,
+    "PostToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/probe.mjs post-exit1"
+          }
+        ]
+      }
+    ]
+  },
+  "probe-log-all": {
+    "enabled": false,
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/probe.mjs log",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/probe.mjs log",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "probe-session-text": {
+    "enabled": false,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node scripts/probe.mjs session-text"
+      }
+    ]
+  },
+  "probe-session-flat": {
+    "enabled": false,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node scripts/probe.mjs session-flat"
+      }
+    ]
+  },
+  "probe-quoted-rel": {
+    "enabled": false,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node \"scripts/probe.mjs\" quoted-rel"
+      }
+    ]
+  },
+  "probe-var-claude": {
+    "enabled": false,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/probe.mjs var-claude"
+      }
+    ]
+  },
+  "probe-var-extpath": {
+    "enabled": false,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node ${extensionPath}/scripts/probe.mjs var-extpath"
+      }
+    ]
+  }
+}

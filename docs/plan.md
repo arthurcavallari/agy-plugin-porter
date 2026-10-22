@@ -49,8 +49,9 @@ Goal: find out what agy 1.3.5 already does, so the porter only builds what's mis
 ### Phase 0 outcome (2026-10-22, see `agy-plugin-porter/docs/agy-baseline.md`)
 - `import` and `install <dir>` run the same pipeline. `import claude` only scans `~/.claude/plugins/*` and misses real Claude Code installs, so **Hangar won't wrap it**.
 - For Claude/Gemini sources, agy stages files well: skills, command → skill, `.mcp.json` → `mcp_config.json`, and hooks copied to the root. But it leaves **hooks in foreign shape (they never fire)**, `${CLAUDE_PLUGIN_ROOT}` unexpanded (hooks and MCP both dead), `CLAUDE.md` unported, and plain-text SessionStart dropped. It also mis-quotes hook commands on Windows.
-- The runtime **already namespaces plugin MCP servers**, so `mcp-prefixed.mjs` is removed from scope.
+- The runtime **already namespaces plugin MCP servers**, so `mcp-prefixed.mjs` is removed from scope. Its `${CLAUDE_PLUGIN_ROOT}` rewrite moves to `manifest-sanitizer.mjs`, and it becomes a rename to `${PLUGIN_ROOT}`, which agy expands in plugin MCP `args`/`env`/`cwd` (step 0, live).
 - Cursor, Roo and Codex aren't detected by agy at all.
+- **Step 0 re-run on agy 1.4.4/1.4.5** (same day, before Phase 1 code). JSON `{"decision":"deny"}` is confirmed live. `{}` from PreToolUse is a deny, so "no opinion" must be empty stdout. SessionStart must be flat, and PostToolUse failures no longer fail the tool. Claude agents are now skipped by the loader. See "Changes since 1.3.5" in the baseline.
 - **Re-scope:** for Claude and Gemini sources the porter runs `agy plugin install` into a staging home, then post-processes the staged directory. It owns hooks, the shim, the MCP path fix, rules, frontmatter cleanup and the audit. For Cursor, Roo and Codex it builds the plugin directory itself. Phases 1–3 below are read with these changes.
 
 ### Phase 1: New repo `agy-plugin-porter` with the core compilers
@@ -60,8 +61,8 @@ Layout follows blueprint §4.2, with the cockpit moved out of the plugin. Node �
 agy-plugin-porter/
   package.json            # bin: agy-porter; exports ./lib/index.mjs
   lib/detector.mjs        # which ecosystem(s) a dir contains
-  lib/manifest-sanitizer.mjs   # → 7-key plugin.json; extracts mcpServers/hooks
-  lib/mcp-prefixed.mjs    # server keys → <slug>_<key>; rewrite ${CLAUDE_PLUGIN_ROOT}
+  lib/manifest-sanitizer.mjs   # → 7-key plugin.json; rescues inline mcpServers;
+                               # ${CLAUDE_PLUGIN_ROOT} → ${PLUGIN_ROOT} in MCP args/env/cwd
   lib/hook-compiler.mjs   # restructure + matcher remap + wrap commands with shim
   lib/skill-compiler.mjs  # commands/*.toml, commands/*.md, .mdc → skills/<id>/SKILL.md
   lib/mode-compiler.mjs   # .roomodes/.kilocodemodes/Claude agents → agents/<id>/agent.md
@@ -79,9 +80,9 @@ agy-plugin-porter/
 - **UI-mod detection.** Claude Code UI mods use the same `hooks/hooks.json` file name as classic hooks, but in a different shape: `{"modules":["./register.tsx"]}`. The module is a TS/TSX file that runs inside Claude Code. `detector.mjs` flags any `hooks.json` with a `modules` key as a UI mod. `hook-compiler.mjs` must not treat that as a classic hook config. If a file has both `modules` and `hooks`, it compiles the `hooks` part and leaves `modules` alone. Each module is reported as `unported: {item: "ui-mod:<path>", reason: "Claude Code UI mods are not ported yet"}`. Nothing is copied or run. Phase 5's listing rule treats an unported UI mod like an unported hook, so a mod plugin isn't listed until a mod compiler exists. Add a `test/fixtures/claude-mod/` fixture: one pane, one `tool.call` hook and one status-line call.
 
 ### Phase 2: Hook shim (`scripts/hook-shim.mjs`)
-- Invocation: `node ${PLUGIN_DIR}/scripts/hook-shim.mjs --event PreToolUse -- <original command>`. The working directory is the plugin root (per hooks.md), so the shim sets `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PROJECT_DIR` (from `workspacePaths[0]`).
+- Invocation: `node scripts/hook-shim.mjs --event PreToolUse -- <original command>`, cwd-relative and unquoted. agy mangles quoted paths on Windows and doesn't expand variables in hook commands. The working directory is the plugin root (per hooks.md, confirmed live), so the shim sets `CLAUDE_PLUGIN_ROOT` to its cwd and `CLAUDE_PROJECT_DIR` to `workspacePaths[0]`. The compiler reports script paths containing spaces instead of emitting them.
 - Stdin translation is camelCase → snake_case (`toolCall.name` → `tool_name` via the reverse tool map, `args` → `tool_input` with key renames such as `CommandLine` → `command`, `conversationId` → `session_id`, `transcriptPath` → `transcript_path`).
-- Output translation: exit 0 with JSON (Claude's `hookSpecificOutput.permissionDecision`, `decision:block`) maps to the Antigravity decision. Exit 0 with no output means `allow` for PreToolUse and `{}` for the others. Exit 2 means `deny` (or `continue` for Stop) with stderr as the reason. Stdout text on SessionStart becomes an `injectSteps` systemMessage.
+- Output translation: exit 0 with JSON (Claude's `hookSpecificOutput.permissionDecision`, `decision:block`) maps to the Antigravity decision. Exit 0 with no output means empty stdout for PreToolUse ("no opinion": the normal permission flow runs) and `{}` for the others. The shim never prints `{}` for PreToolUse, because agy reads that as a deny. Exit 2 means `deny` (or `continue` for Stop) with stderr as the reason. Stdout text on SessionStart becomes an `injectSteps` systemMessage.
 - Windows: spawn with `shell:true` only for the wrapped command, never for the shim. The shim strips the BOM and normalizes CRLF.
 
 ### Claude Code UI mods: spike, then decide
