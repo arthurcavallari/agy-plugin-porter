@@ -1,0 +1,21 @@
+{
+  "name": "agy-plugin-porter",
+  "version": "0.1.0",
+  "description": "Ports Claude Code, Gemini CLI, Cursor, Roo/Kilo and Codex plugins to native Antigravity plugins.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "lib/",
+    "scripts/"
+  ],
+  "exports": {
+    "./detector": "./lib/detector.mjs",
+    "./hook-compiler": "./lib/hook-compiler.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/detector.test.mjs test/hook-compiler.test.mjs test/hook-shim.test.mjs"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "fixture-claude-mod",
+  "version": "0.1.0",
+  "description": "Claude Code UI mod fixture: one pane, one tool.call guard, one status-line entry.",
+  "types": "./types/index.d.ts"
+}
