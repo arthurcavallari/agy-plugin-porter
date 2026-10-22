@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { buildManifest, fixMcpServers, sanitizeManifest } from '../lib/manifest-sanitizer.mjs';
 import { compileModes, mapClaudeModel, mapClaudeTools, mapRooGroups } from '../lib/mode-compiler.mjs';
 import { compileRules, cursorTrigger } from '../lib/rules-compiler.mjs';
-import { compileSkills } from '../lib/skill-compiler.mjs';
+import { compileSkills, slugifyName } from '../lib/skill-compiler.mjs';
+import { parseSourceSpec, resolveSource } from '../lib/source.mjs';
 import { auditPlugin, auditText, inferTier, looksRandom } from '../lib/static-auditor.mjs';
 import { splitFrontmatter } from '../lib/yaml-lite.mjs';
 
@@ -166,4 +167,35 @@ test('auditor: patterns, entropy false positives, tag stripping, tier', () => {
   assert.equal(inferTier(dir).tier, 'TIER_2_LOCAL_TOOLING');
   write(dir, 'hooks.json', JSON.stringify({ t: { Stop: [] } }));
   assert.equal(inferTier(dir).tier, 'TIER_3_AGENT_CONTROL');
+});
+
+test('source specs: refs and owners can never become git options', () => {
+  assert.deepEqual(parseSourceSpec('trailofbits/skills@v1.2.3'), { kind: 'github', owner: 'trailofbits', repo: 'skills', ref: 'v1.2.3' });
+  assert.deepEqual(parseSourceSpec('a/b.git@release/1.x'), { kind: 'github', owner: 'a', repo: 'b', ref: 'release/1.x' });
+  assert.equal(parseSourceSpec('a/b@0123456789abcdef0123456789abcdef01234567').ref, '0123456789abcdef0123456789abcdef01234567');
+  assert.equal(parseSourceSpec('a/b').ref, null);
+  for (const bad of ['a/b@--upload-pack=touch x', 'a/b@-x', '-a/b', 'a/b@x y', 'a/b@x:y', 'a/b@../x', 'a/b@$(x)']) {
+    assert.throws(() => parseSourceSpec(bad), /neither an existing path/, bad);
+  }
+});
+
+test('source subPath must stay inside the source', () => {
+  const root = tmp();
+  mkdirSync(join(root, 'inner'));
+  mkdirSync(`${root}-sibling`);
+  assert.equal(resolveSource(root, { subPath: 'inner' }).dir, join(root, 'inner'));
+  assert.throws(() => resolveSource(root, { subPath: '..' }), /no folder/);
+  assert.throws(() => resolveSource(root, { subPath: `../${root.split(/[\/]/).pop()}-sibling` }), /no folder/);
+});
+
+test('name helpers stay linear on hostile input', () => {
+  assert.equal(slugifyName('--Clean_Gone!!--'), 'clean-gone');
+  assert.equal(slugifyName('---'), 'skill');
+  assert.equal(slugifyName(`${'a'.repeat(63)}-b`), 'a'.repeat(63));
+  let start = Date.now();
+  slugifyName(`a${'-'.repeat(200_000)}a!`);
+  assert.ok(Date.now() - start < 500, 'slugifyName on a long run of "-"');
+  start = Date.now();
+  assert.deepEqual(mapClaudeTools(`${'('.repeat(100_000)}x`).unmapped.length, 1);
+  assert.ok(Date.now() - start < 500, 'mapClaudeTools on a long run of "("');
 });
