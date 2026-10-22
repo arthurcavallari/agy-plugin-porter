@@ -1,0 +1,64 @@
+{
+  "name": "agy-plugin-porter",
+  "version": "0.1.0",
+  "description": "Ports Claude Code, Gemini CLI, Cursor, Roo/Kilo and Codex plugins to native Antigravity plugins.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Arthur Cavallari",
+    "url": "https://github.com/arthurcavallari"
+  },
+  "homepage": "https://github.com/arthurcavallari/agy-plugin-porter#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arthurcavallari/agy-plugin-porter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/arthurcavallari/agy-plugin-porter/issues"
+  },
+  "keywords": [
+    "antigravity",
+    "google-antigravity",
+    "agy",
+    "agy-plugin",
+    "antigravity-plugin",
+    "claude-code",
+    "claude-code-plugin",
+    "gemini-cli",
+    "cursor",
+    "roo-code",
+    "codex",
+    "plugin-porter",
+    "hooks",
+    "mcp"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "bin": {
+    "agy-porter": "bin/agy-porter.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "scripts/hook-shim.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./lib/index.mjs",
+    "./detector": "./lib/detector.mjs",
+    "./hook-compiler": "./lib/hook-compiler.mjs",
+    "./manifest-sanitizer": "./lib/manifest-sanitizer.mjs",
+    "./skill-compiler": "./lib/skill-compiler.mjs",
+    "./rules-compiler": "./lib/rules-compiler.mjs",
+    "./mode-compiler": "./lib/mode-compiler.mjs",
+    "./static-auditor": "./lib/static-auditor.mjs",
+    "./transpiler-engine": "./lib/transpiler-engine.mjs",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "test": "node --test test/yaml-lite.test.mjs test/detector.test.mjs test/hook-compiler.test.mjs test/hook-shim.test.mjs test/compilers.test.mjs test/transpiler.test.mjs",
+    "test:pack": "node scripts/pack-smoke.mjs"
+  }
+}

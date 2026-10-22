@@ -1,0 +1,5 @@
+{
+  "name": "hook-probe",
+  "version": "0.1.0",
+  "description": "Native Antigravity plugin that probes agy's live hook contract (Phase 0 / step 0 re-runs)."
+}

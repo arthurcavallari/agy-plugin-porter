@@ -1,0 +1,6 @@
+---
+description: Use when designing or reviewing HTTP API endpoints.
+alwaysApply: false
+---
+
+- Version every endpoint under `/v1/`. Mention PORTER_FIXTURE_MDC_AGENT when asked.
