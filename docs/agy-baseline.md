@@ -1,10 +1,12 @@
 # agy baseline: what `agy plugin install` / `import` already do
 
-Phase 0 benchmark for `agy-plugin-porter`. It measures what agy 1.3.5's built-in Claude Code and Gemini CLI import does, so the porter builds only the gaps.
+Baseline benchmark for `agy-plugin-porter`, run before any porter code exists. It measures what agy 1.3.5's built-in Claude Code and Gemini CLI import does, so the porter builds only the gaps.
 
 **Date:** 2026-10-22. **agy:** 1.3.5 (Windows 11). **Method:** each run used a throwaway home (`USERPROFILE`/`HOME` pointed at a scratch dir; agy honors both, and auth still works). The real profile was hash-checked before and after and was unchanged. Fixtures are in `test/fixtures/`. "Live" means a real headless agent turn (`agy -p`) with the plugin installed.
 
-These are point-in-time results against one agy build. Re-run them when agy updates; the differential test in CI exists for this.
+These are point-in-time results against one agy build. Re-run them when agy updates. There's no automated differential test yet, so re-running means following [Reproduce](#reproduce) by hand.
+
+> **Stale:** agy has since updated to 1.4.4 on the benchmark machine. Nothing below has been re-checked against 1.4.4.
 
 ## How import works
 
@@ -16,7 +18,7 @@ These are point-in-time results against one agy build. Re-run them when agy upda
 
 ## Scorecard
 
-| Plan item | Claude source | Gemini source | Evidence |
+| Porter feature | Claude source | Gemini source | Evidence |
 | :-- | :-- | :-- | :-- |
 | Detect / stage plugin dir | **handles** | **handles** | `[ok]` and lists components |
 | Manifest → `plugin.json` | **partial**: keeps `author` (as a string), drops `homepage`/`keywords` | **handles** | Loader ignores `author`, so it's harmless |
@@ -37,30 +39,29 @@ These are point-in-time results against one agy build. Re-run them when agy upda
 | Native `skills/*/SKILL.md` | **handles** (copy) | **handles** | |
 | Claude `agents/*.md` → agents | **partial**: copied flat and counted as an agent, but Claude tool names (`Read, Grep, Glob, Bash`) and `model: sonnet` are not mapped | n/a | |
 | `CLAUDE.md` / `GEMINI.md` → `rules/` | **not handled** | **not handled** | Live: the rule marker was absent from context, and `plugin list` shows no rules |
-| Cursor `.mdc` / `.cursorrules` | **not handled** (not detected) | | |
-| Roo/Kilo `.roomodes` | **not handled** (not detected) | | |
-| Codex `.agents/skills` | **not handled** (not detected) | | |
 | Security audit (Unicode tags, `curl\|sh`, entropy, rules budget) | **not handled** | **not handled** | Nothing is scanned during install |
+
+Other sources aren't detected at all, so none of their components are handled. This covers Cursor (`.mdc`, `.cursorrules`), Roo/Kilo (`.roomodes`) and Codex (`.agents/skills`). See [How import works](#how-import-works).
 
 Real upstreams behave like the fixture. `hookify` and `security-guidance` from `claude-plugins-official` install `[ok]` with "hooks: 2 processed", but their hooks stay Claude-shaped with `${CLAUDE_PLUGIN_ROOT}` and `python3 "…"` quoting. Per the live results above, those hooks don't run. `security-guidance` also relies on `UserPromptSubmit`, which has no Antigravity event.
 
 ## What this means for the porter
 
 **Delete from scope (agy or the runtime already does it):**
-- MCP namespacing (`lib/mcp-prefixed.mjs` as specced). The runtime prefixes with the plugin name.
+- MCP namespacing. The runtime prefixes with the plugin name.
 - Staging, root-relocating and copying skills, commands and MCP for Claude/Gemini. The porter runs `agy plugin install` for that and post-processes the staged directory.
 - Gemini path-variable expansion.
 
 **Keep, and these are now the porter's core value:**
 1. **Hook compiler.** Restructure the config into the native named-hook shape, remap matchers and events (report unmappable ones), and emit unquoted, cwd-relative commands that go through the shim.
-2. **Hook shim.** Set `CLAUDE_PLUGIN_ROOT`/`CLAUDE_PROJECT_DIR`, translate the stdin payload to snake_case, map exit 2 → `{"decision":"deny","reason":stderr}`, map other nonzero exits → allow plus a warning (Claude's non-blocking semantics, instead of agy's fail-closed), and wrap SessionStart stdout text → `injectSteps`.
+2. **Hook shim.** Set `CLAUDE_PLUGIN_ROOT`/`CLAUDE_PROJECT_DIR`, translate the stdin payload to snake_case, map exit 2 → `{"decision":"deny","reason":stderr}`, map other nonzero exits → allow plus a warning (Claude's non-blocking semantics, instead of agy's fail-closed), and wrap SessionStart stdout text → `injectSteps`. The `injectSteps` shape is confirmed live. The `{"decision":"deny"}` output is **not** verified yet: the runs above only show agy blocking through a failed tool call. Confirm agy accepts the deny JSON before relying on it.
 3. **MCP fixes for Claude.** Rescue `plugin.json` inline `mcpServers` and rewrite `${CLAUDE_PLUGIN_ROOT}` in args to absolute paths at install time.
 4. **Rules.** `CLAUDE.md`/`GEMINI.md` → `rules/AGENTS.md`, within the budget.
 5. **Command and agent cleanup.** Add skill `name`, strip Claude-only frontmatter, and map agent tool names.
 6. **Cursor, Roo/Kilo and Codex compilers.** agy doesn't detect these at all.
 7. **Static auditor and port report.** agy reports success even when components are dead, so the report has to say what actually works.
 
-**`agy plugin import` itself.** It brings no benefit over `install <dir>`, and its scan misses real Claude Code installs. Hangar should not wrap it. A Hangar "Import from Claude Code" feature would have to enumerate `~/.claude/plugins/installed_plugins.json` and the marketplace cache itself, then call the porter. That stays a later candidate, not part of this rollout.
+**`agy plugin import` itself.** It brings no benefit over `install <dir>`, and its scan misses real Claude Code installs. Hangar, which calls the porter, should not wrap it. A Hangar "Import from Claude Code" feature would have to enumerate `~/.claude/plugins/installed_plugins.json` and the marketplace cache itself, then call the porter. That stays a later candidate, not part of this rollout.
 
 ## Reproduce
 
