@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hello": {
+      "command": "agy-node",
+      "args": ["${PLUGIN_ROOT}/sidecars/hello/mcp.mjs"]
+    }
+  }
+}

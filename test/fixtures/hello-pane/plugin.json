@@ -1,0 +1,9 @@
+{
+  "name": "porter-step0-hello",
+  "displayName": "Porter step 0: hello pane",
+  "description": "Test fixture for agy-plugin-porter Phase 2.5 step 0: one sidecar with a side-pane view, one MCP server and one PreToolUse hook. Not for everyday use.",
+  "version": "0.0.1",
+  "logo": "logo.svg",
+  "suggestedPrompts": ["Open the hello pane", "Call hello_status", "Call hello_bump"],
+  "disabled": false
+}
