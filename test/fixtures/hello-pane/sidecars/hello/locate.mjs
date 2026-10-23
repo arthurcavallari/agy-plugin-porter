@@ -34,8 +34,11 @@ export const pickEnv = (pattern = /^ANTIGRAVITY_/i) => Object.fromEntries(Object
   .filter(([k]) => pattern.test(k))
   .map(([k, v]) => [k, SECRET.test(k) ? `<redacted, ${v.length} chars>` : v]));
 
+// Loopback only, whatever server_info.json says, so a rewritten file can't send data off this machine.
 export async function callSidecar(info, method, path, body) {
-  const res = await fetch(`http://${info.host}:${info.port}${path}`, {
+  const port = Number(info.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('bad port in server_info.json');
+  const res = await fetch(`http://127.0.0.1:${port}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json', 'X-Sidecar-Token': info.token },
     body: body === undefined ? undefined : JSON.stringify(body),

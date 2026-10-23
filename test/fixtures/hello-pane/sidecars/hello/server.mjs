@@ -93,7 +93,7 @@ const server = createServer(async (req, res) => {
         at: new Date().toISOString(), event: event ?? null, tool: payload?.toolCall?.name ?? null,
         command: payload?.toolCall?.args?.CommandLine ?? null, conversationId: payload?.conversationId ?? null, stepIdx: payload?.stepIdx ?? null,
       };
-      log('hook', { event, payload });
+      log('hook', { hookEvent: event ?? null, payload });
       broadcast();
       return send(res, 200, { ok: true });
     }

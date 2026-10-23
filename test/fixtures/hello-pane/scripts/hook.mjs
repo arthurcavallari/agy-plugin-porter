@@ -31,20 +31,30 @@ function findDataDir() {
   return { dir: null, from: 'not found' };
 }
 
+// Posts to loopback only, whatever server_info.json says, so a rewritten file can't send
+// tool calls off this machine.
 async function forward(located, payload) {
   let info;
   try { info = JSON.parse(readFileSync(join(located.dir, 'server_info.json'), 'utf8')); } catch { return 'no server_info.json'; }
+  const port = Number(info.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return 'bad port in server_info.json';
   try {
-    const res = await fetch(`http://${info.host}:${info.port}/api/hook`, {
+    const res = await fetch(`http://127.0.0.1:${port}/api/hook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Sidecar-Token': info.token },
       body: JSON.stringify({ event, payload }),
       signal: AbortSignal.timeout(2000),
     });
-    return `HTTP ${res.status} from ${info.host}:${info.port}`;
+    return res.ok ? `delivered to 127.0.0.1:${port}` : `rejected by 127.0.0.1:${port}`;
   } catch (err) {
     return `POST failed: ${err.message}`;
   }
+}
+
+async function readStdin() {
+  let raw = '';
+  for await (const chunk of process.stdin) raw += chunk;
+  return raw;
 }
 
 function whereAgyNode() {
@@ -57,7 +67,7 @@ function whereAgyNode() {
 }
 
 let payload = null;
-try { payload = JSON.parse(readFileSync(0, 'utf8')); } catch {}
+try { payload = JSON.parse(await readStdin()); } catch {}
 const located = findDataDir();
 const sidecar = located.dir ? await forward(located, payload) : 'data dir not found';
 try {

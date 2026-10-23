@@ -79,13 +79,17 @@
   document.head.appendChild(preload);
 
   // Messages the host posts into the iframe (theme-change, workspace-change, ...), first of each type.
-  const seen = {};
+  // Only the frame that embeds this view (the app, or Hangar) is listened to.
+  const parentOrigin = location.ancestorOrigins?.[0];
+  const seen = new Map();
   window.addEventListener('message', (e) => {
-    const type = e.data?.type ?? typeof e.data;
-    if (seen[type]) return;
-    seen[type] = { origin: e.origin, payloadKeys: Object.keys(e.data?.payload ?? {}) };
-    show('messages', seen);
-    report('host-message', { type, ...seen[type] });
+    if (e.origin !== parentOrigin) return;
+    const type = String(e.data?.type ?? typeof e.data);
+    if (seen.has(type)) return;
+    const info = { origin: e.origin, payloadKeys: Object.keys(e.data?.payload ?? {}) };
+    seen.set(type, info);
+    show('messages', [...seen].map(([t, i]) => ({ type: t, ...i })));
+    report('host-message', { type, ...info });
   });
 
   const render = (s) => {
