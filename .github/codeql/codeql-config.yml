@@ -1,0 +1,8 @@
+name: agy-plugin-porter CodeQL config
+
+# test/fixtures/hello-pane is the Phase 2.5 step 0 probe plugin. It is test-only and not
+# in the npm package. By design it reads a token from server_info.json and sends it to
+# its sidecar over loopback, which js/file-access-to-http reports with no sanitizer to
+# clear it. The same flow in shipped code (scripts/mod-runtime/, Phase 2.5B) stays scanned.
+paths-ignore:
+  - test/fixtures/hello-pane
