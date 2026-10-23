@@ -1,11 +1,28 @@
 name: publish
 
-# Push a tag matching package.json (e.g. `git tag v0.1.0 && git push origin v0.1.0`).
+# Trigger from the Actions tab (Run workflow -> patch/minor/major or exact version),
+# or push a tag matching package.json (e.g. `git tag v0.1.0 && git push origin v0.1.0`).
 # Uses npm trusted publishing (OIDC): no NPM_TOKEN secret; provenance is attached automatically.
 # The package must have this repo + workflow set up as a trusted publisher on npmjs.com first.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump (ignored if exact version is provided)'
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      version:
+        description: 'Optional exact version (e.g. 0.2.0)'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -19,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: read
+      contents: write
       id-token: write # required for trusted publishing and provenance
     steps:
       - uses: actions/checkout@v7
@@ -29,13 +46,53 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Use an npm with trusted publishing support (>= 11.5.1)
         run: npm install -g npm@^11.5.1
-      - name: Check tag matches package.json version
+      - name: Bump version (workflow_dispatch) or verify tag (push)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_BUMP: ${{ inputs.bump }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          version="$(node -p "require('./package.json').version")"
-          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version v${version}"
-            exit 1
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            if [ "${REF_NAME}" != "main" ]; then
+              echo "::error::workflow_dispatch releases must run from main (got ${REF_NAME})"
+              exit 1
+            fi
+            target="${INPUT_VERSION:-${INPUT_BUMP}}"
+            case "${target}" in
+              patch|minor|major|[0-9]*.[0-9]*.[0-9]*) ;;
+              *)
+                echo "::error::Invalid version or bump target: ${target}"
+                exit 1
+                ;;
+            esac
+            npm version "${target}" --no-git-tag-version
+          else
+            version="$(node -p "require('./package.json').version")"
+            if [ "${REF_NAME}" != "v${version}" ]; then
+              echo "::error::Tag ${REF_NAME} does not match package.json version v${version}"
+              exit 1
+            fi
           fi
       - run: npm test
       - run: npm run test:pack
+      - name: Commit and push release tag (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore(release): ${version}"
+          git tag "v${version}"
+          git push origin HEAD:main "refs/tags/v${version}"
       - run: npm publish --provenance --access public
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="v${version}"
+          if ! gh release view "${tag}" >/dev/null 2>&1; then
+            gh release create "${tag}" --title "${tag}" --generate-notes --verify-tag
+          fi
