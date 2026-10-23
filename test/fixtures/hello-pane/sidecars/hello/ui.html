@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hello pane</title>
+<style>
+  body { font: 13px system-ui, sans-serif; margin: 12px; }
+  h1 { font-size: 15px; margin: 0 0 10px; }
+  section { margin: 10px 0; }
+  .count { font-size: 28px; font-weight: 600; margin-right: 8px; }
+  pre { white-space: pre-wrap; word-break: break-all; background: rgba(127, 127, 127, 0.12); padding: 6px; margin: 4px 0 0; }
+  .bad { color: #c62828; }
+</style>
+</head>
+<body>
+<h1>porter-step0-hello</h1>
+<p id="noscript" class="bad">Scripts haven't run. If this stays, a CSP or iframe sandbox blocks inline scripts.</p>
+<section><span id="count" class="count">?</span><button id="click" type="button">Click</button> <span id="sse"></span></section>
+<section>Last hook event<pre id="hook">none yet</pre></section>
+<section>window.sidecar<pre id="sidecar-info">checking…</pre></section>
+<section>CSP<pre id="csp">no violations seen</pre></section>
+<section>Page<pre id="page"></pre></section>
+<section>Host messages<pre id="messages">none yet</pre></section>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  $('noscript').remove();
+  const params = new URLSearchParams(location.search);
+  const token = params.get('token') || '';
+  const headers = { 'Content-Type': 'application/json', 'X-Sidecar-Token': token };
+  const report = (kind, data) =>
+    fetch('/api/report', { method: 'POST', headers, body: JSON.stringify({ kind, ...data }) }).catch(() => {});
+  const show = (id, value) => { $(id).textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2); };
+
+  // CSP: record every violation, and probe eval, which strict policies block.
+  const violations = [];
+  document.addEventListener('securitypolicyviolation', (e) => {
+    const v = { directive: e.effectiveDirective, blocked: e.blockedURI, disposition: e.disposition, policy: e.originalPolicy };
+    violations.push(v);
+    show('csp', violations);
+    $('csp').className = 'bad';
+    report('csp-violation', v);
+  });
+  let evalAllowed = false;
+  try { evalAllowed = new Function('return 1')() === 1; } catch {}
+
+  const page = {
+    path: location.pathname,
+    query: [...params.keys()].map((k) => (k === 'token' ? 'token=<redacted>' : `${k}=${params.get(k)}`)),
+    conversationIdParam: params.get('conversationId'),
+    convParam: params.get('conv'),
+    origin: location.origin,
+    inIframe: window.parent !== window,
+    ancestorOrigins: [...(location.ancestorOrigins || [])],
+    referrer: document.referrer.replace(/([?&]token=)[^&#]*/gi, '$1<redacted>'),
+    secureContext: window.isSecureContext,
+    evalAllowed,
+    cspMeta: document.querySelector('meta[http-equiv="Content-Security-Policy" i]')?.content ?? null,
+    // Element ids become window properties, so check for an object that isn't a DOM node.
+    sidecarBeforePreload: Boolean(window.sidecar) && !(window.sidecar instanceof Node),
+  };
+  show('page', page);
+
+  // window.sidecar: check before and after loading the SDK's preload.js through this server.
+  const members = (o, prefix = '') => Object.entries(o).flatMap(([k, v]) =>
+    v && typeof v === 'object' && !Array.isArray(v) ? members(v, `${prefix}${k}.`)
+      : [`${prefix}${k}: ${typeof v === 'function' ? 'function' : JSON.stringify(v)}`]);
+  const checkSidecar = (when) => {
+    const info = { when, exists: Boolean(window.sidecar), members: window.sidecar ? members(window.sidecar) : [] };
+    show('sidecar-info', info);
+    report('page', { ...page, sidecar: info, violations });
+  };
+  if (page.sidecarBeforePreload) checkSidecar('before /preload.js (host-injected)');
+  const preload = document.createElement('script');
+  preload.src = '/preload.js' + location.search;
+  preload.onload = () => checkSidecar('after /preload.js');
+  preload.onerror = () => checkSidecar('/preload.js failed to load');
+  document.head.appendChild(preload);
+
+  // Messages the host posts into the iframe (theme-change, workspace-change, ...), first of each type.
+  // Only the frame that embeds this view (the app, or Hangar) is listened to.
+  const parentOrigin = location.ancestorOrigins?.[0];
+  const seen = new Map();
+  window.addEventListener('message', (e) => {
+    if (e.origin !== parentOrigin) return;
+    const type = String(e.data?.type ?? typeof e.data);
+    if (seen.has(type)) return;
+    const info = { origin: e.origin, payloadKeys: Object.keys(e.data?.payload ?? {}) };
+    seen.set(type, info);
+    show('messages', [...seen].map(([t, i]) => ({ type: t, ...i })));
+    report('host-message', { type, ...info });
+  });
+
+  const render = (s) => {
+    show('count', String(s.counter));
+    show('hook', s.lastHook ?? 'none yet');
+  };
+  const events = new EventSource('/api/events?token=' + encodeURIComponent(token));
+  events.onopen = () => show('sse', 'live');
+  events.onmessage = (e) => render(JSON.parse(e.data));
+  events.onerror = () => show('sse', 'SSE disconnected');
+  $('click').onclick = () => fetch('/api/click', {
+    method: 'POST', headers, body: JSON.stringify({ source: 'ui', conversationId: page.conversationIdParam }),
+  });
+})();
+</script>
+</body>
+</html>

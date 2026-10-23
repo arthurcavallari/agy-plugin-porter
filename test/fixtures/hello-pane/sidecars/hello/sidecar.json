@@ -1,0 +1,18 @@
+{
+  "command": "node",
+  "args": ["server.mjs"],
+  "description": "Step 0 test sidecar for agy-plugin-porter: a counter, a click API and a hook sink.",
+  "display_name": "Porter step 0 hello",
+  "has_web_ui": true,
+  "restart_policy": "always",
+  "ui_config": {
+    "display_name": "Porter step 0 hello",
+    "views": [
+      {
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "path": "/ui.html",
+        "title": "Hello pane"
+      }
+    ]
+  }
+}

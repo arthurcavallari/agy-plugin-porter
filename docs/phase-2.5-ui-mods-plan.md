@@ -29,7 +29,7 @@ Phases 0–2 are merged, and verified against agy 1.4.5:
 | :-- | :-- |
 | `agy plugin validate` counts a plugin's `sidecars/<id>/sidecar.json` (`sidecars 1` for Google's `science` plugin) | live, 1.4.5 |
 | `agy plugin install` copies `sidecars/<id>/sidecar.json` into the installed plugin | live, 1.4.5 |
-| A plugin sidecar's view opens in the side pane, and a third-party plugin's sidecar starts after a restart | **unknown**: the step 0 gate |
+| A plugin sidecar's view opens in the side pane, and a third-party plugin's sidecar starts after a restart | live, desktop 2.25.0: **yes**, step 0 passed (see [ui-mods-baseline.md](./ui-mods-baseline.md)) |
 
 ### 2.2 Google's reference: `science/sidecars/biomolecular_structure_viewer` (static)
 
