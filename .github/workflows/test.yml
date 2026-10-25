@@ -6,6 +6,9 @@ name: test
 on:
   push:
   pull_request:
+  # The publish workflow starts this on its release/vX.Y.Z branch, so main's required checks run
+  # on the release commit before it is pushed (see publish.yml)
+  workflow_dispatch:
 
 permissions:
   contents: read

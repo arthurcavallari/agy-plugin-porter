@@ -1,9 +1,18 @@
 name: publish
 
 # Trigger from the Actions tab (Run workflow -> patch/minor/major or exact version),
-# or push a tag matching package.json (e.g. `git tag v0.1.0 && git push origin v0.1.0`).
-# Uses npm trusted publishing (OIDC): no NPM_TOKEN secret; provenance is attached automatically.
-# The package must have this repo + workflow set up as a trusted publisher on npmjs.com first.
+# or push a tag like v1.0.6 (matching package.json) to publish that version to npm.
+# Uses npm trusted publishing (OIDC): no npm token is stored, and the package gets a provenance
+# attestation linking it to this repo and workflow run.
+#
+# main requires the test matrix to pass on a commit before it can be pushed. A workflow can't read the
+# branch protection, and its pushes don't start other workflows, so a one-click release works like this:
+#   1. commit the version bump on a release/vX.Y.Z branch
+#   2. start test.yml on that branch (workflow_dispatch is exempt from the "no workflow from a workflow
+#      token" rule), and wait for it to pass
+#   3. fast-forward main to that commit, tag it, publish
+# Nothing is faked: main only accepts the commit once the real checks have run on it. Run it with
+# dry_run to go through step 2 and stop, leaving main, the tags and npm alone.
 on:
   push:
     tags: ['v*']
@@ -23,6 +32,11 @@ on:
         required: false
         type: string
         default: ''
+      dry_run:
+        description: 'Stop after the checks pass on the release commit: no main, tag or publish'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -34,11 +48,15 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
-      contents: write
-      checks: write
-      id-token: write # required for trusted publishing and provenance
+      contents: write # push the release branch, main and the tag; create the release
+      actions: write # start test.yml on the release branch and watch it
+      id-token: write # trusted publishing and provenance
+    env:
+      GH_TOKEN: ${{ github.token }}
+      IS_DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
+      DRY_RUN: ${{ inputs.dry_run == true }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -49,12 +67,11 @@ jobs:
         run: npm install -g npm@^11.5.1
       - name: Bump version (workflow_dispatch) or verify tag (push)
         env:
-          EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
           INPUT_BUMP: ${{ inputs.bump }}
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+          if [ "${IS_DISPATCH}" = "true" ]; then
             if [ "${REF_NAME}" != "main" ]; then
               echo "::error::workflow_dispatch releases must run from main (got ${REF_NAME})"
               exit 1
@@ -68,41 +85,74 @@ jobs:
                 ;;
             esac
             npm version "${target}" --no-git-tag-version
+
           else
-            version="$(node -p "require('./package.json').version")"
-            if [ "${REF_NAME}" != "v${version}" ]; then
-              echo "::error::Tag ${REF_NAME} does not match package.json version v${version}"
+            VERSION="$(node -p "require('./package.json').version")"
+            if [ "${REF_NAME}" != "v${VERSION}" ]; then
+              echo "::error::Tag ${REF_NAME} does not match package.json version ${VERSION}"
               exit 1
             fi
           fi
       - run: npm test
       - run: npm run test:pack
-      - name: Commit and push release tag (workflow_dispatch)
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Commit the release on a branch and run the required checks on it (workflow_dispatch)
+        if: env.IS_DISPATCH == 'true'
         run: |
           version="$(node -p "require('./package.json').version")"
+          branch="release/v${version}"
+          if git ls-remote --exit-code --heads origin "${branch}" >/dev/null 2>&1; then
+            echo "::error::${branch} already exists on origin (a release that stopped half way?). Delete it, then run again."
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${branch}"
           git add package.json
           git commit -m "chore(release): ${version}"
+          git push origin "${branch}"
+          sha="$(git rev-parse HEAD)"
+
+          # Required checks attach to the commit, so the real matrix run on this branch is what lets main take it
+          gh workflow run test.yml --ref "${branch}"
+          run_id=""
+          for _ in $(seq 1 36); do
+            run_id="$(gh run list --workflow test.yml --branch "${branch}" --event workflow_dispatch --commit "${sha}" --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+            [ -n "${run_id}" ] && break
+            sleep 5
+          done
+          if [ -z "${run_id}" ]; then
+            echo "::error::test.yml did not start on ${branch}"
+            exit 1
+          fi
+          echo "Waiting for the test matrix: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+          gh run watch "${run_id}" --exit-status --interval 15
+          echo "Checks that passed on ${sha}:"
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs" --jq '.check_runs[] | select(.conclusion == "success") | "  \(.name)"'
+      - name: Dry run finished
+        if: env.IS_DISPATCH == 'true' && env.DRY_RUN == 'true'
+        run: |
+          echo "Dry run: the checks passed on the release commit. main, the tag and npm were not touched."
+      - name: Move main to the release commit and tag it (workflow_dispatch)
+        if: env.IS_DISPATCH == 'true' && env.DRY_RUN != 'true'
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          # A fast-forward, accepted because the required checks have now run on this commit. A stray tag
+          # is never left behind: main moves first.
+          git push origin HEAD:main
           git tag "v${version}"
           git push origin "refs/tags/v${version}"
-          if ! git push origin HEAD:main; then
-            sha="$(git rev-parse HEAD)"
-            gh api "repos/${GITHUB_REPOSITORY}/branches/main/protection/required_status_checks/contexts" --jq '.[]' | while IFS= read -r ctx; do
-              [ -n "${ctx}" ] && gh api "repos/${GITHUB_REPOSITORY}/check-runs" -f name="${ctx}" -f head_sha="${sha}" -f status="completed" -f conclusion="success" >/dev/null
-            done
-            git push origin HEAD:main
-          fi
-      - run: npm publish --provenance --access public
+      - if: env.IS_DISPATCH != 'true' || env.DRY_RUN != 'true'
+        run: npm publish --provenance --access public
       - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
+        if: env.IS_DISPATCH != 'true' || env.DRY_RUN != 'true'
         run: |
           version="$(node -p "require('./package.json').version")"
           tag="v${version}"
           if ! gh release view "${tag}" >/dev/null 2>&1; then
             gh release create "${tag}" --title "${tag}" --generate-notes --verify-tag
           fi
+      - name: Delete the release branch
+        if: always() && env.IS_DISPATCH == 'true'
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          git push origin --delete "release/v${version}" || true
