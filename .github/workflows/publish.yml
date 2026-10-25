@@ -10,7 +10,7 @@ name: publish
 # satisfy or bypass, so the two pushes use RELEASE_TOKEN: a fine-grained personal access token of the
 # repo owner (Contents: read and write on this repo), who is an admin the protection lets through. The
 # token is given only to the step that pushes, never to npm install or the tests. Before bumping, the
-# run checks that the tests passed on the commit it is releasing. dry_run stops after the tests.
+# run checks that the token works and that the tests passed on the commit it is releasing. dry_run does those\n# checks, bumps and runs the tests, then stops.
 on:
   push:
     tags: ['v*']
@@ -56,8 +56,8 @@ jobs:
       IS_DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
       DRY_RUN: ${{ inputs.dry_run == true }}
     steps:
-      - name: Check the release token (workflow_dispatch)
-        if: env.IS_DISPATCH == 'true' && env.DRY_RUN != 'true'
+      - name: Check the release token (workflow_dispatch, dry runs too)
+        if: env.IS_DISPATCH == 'true'
         env:
           RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
@@ -65,6 +65,16 @@ jobs:
             echo "::error::The RELEASE_TOKEN secret is not set. A release pushes to main with it; see the comment at the top of this workflow."
             exit 1
           fi
+          # Proves the token is valid, hasn't expired and was granted this repo, before anything is bumped
+          if ! access="$(GH_TOKEN="${RELEASE_TOKEN}" gh api "repos/${GITHUB_REPOSITORY}" --jq '"\(.permissions.push) \(.permissions.admin)"')"; then
+            echo "::error::GitHub rejected RELEASE_TOKEN. Is it expired or revoked, or not granted ${GITHUB_REPOSITORY}?"
+            exit 1
+          fi
+          case "${access}" in
+            "true true") echo "RELEASE_TOKEN works: its owner can push to ${GITHUB_REPOSITORY} and is an admin." ;;
+            "true "*) echo "::warning::RELEASE_TOKEN can push, but GitHub does not report its owner as an admin (${access}). Pushes to main need an admin to get past the required checks; the real push will tell." ;;
+            *) echo "::error::RELEASE_TOKEN cannot push to ${GITHUB_REPOSITORY} (push/admin: ${access}). Give it Contents: Read and write."; exit 1 ;;
+          esac
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
