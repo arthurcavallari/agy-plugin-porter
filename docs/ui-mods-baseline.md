@@ -62,12 +62,12 @@ Every process logs what it receives (`ANTIGRAVITY_*` variables with secrets reda
 | Per-sidecar `enabled` flag | `sidecars["porter-step0-hello/hello"].enabled: false` in `config.json` **didn't stop** the plugin sidecar. `restart_policy` restarted it, and it started on the next launch. Hangar most likely wrote that flag through the app (see below). A standalone sidecar with the same flag (Docker Ops) stayed stopped. | live |
 | Uninstall | `agy plugin uninstall` removes the plugin folder and `plugins.<name>`, but leaves `sidecars["<plugin>/<id>"]` (with its `projectId`) in `config.json`. | live |
 
-**Hangar side effect.** At 11:30:52, while the view was open inside Hangar, Hangar added the plugin sidecar to `config/hangar.json` as `scope: "project"` with `autoHibernate: true`, and `layout.pinnedTopSidecarId` changed to it. At 13:05:24, `config.json` gained the ignored `enabled: false` above. Nobody toggled it by hand. Hangar's `hibernation-manager.mjs` sends `SIDECAR_ACTION_DISABLE` for auto-hibernate sidecars that don't match the active workspace after `hibernateAfterIdleMinutes` (10). That's the likely writer. It's inferred from Hangar's source and the config writes, not traced live. Hangar should treat plugin sidecars as plugin-controlled. That fix belongs in the Hangar repo, not here.
+**Hangar side effect.** At 11:30:52, while the view was open inside Hangar, Hangar added the plugin sidecar to `config/hangar.json` as `scope: "project"` with `autoHibernate: true`, and `layout.pinnedTopSidecarId` changed to it. At 13:05:24, `config.json` gained the ignored `enabled: false` above. Nobody toggled it by hand. Hangar's `hibernation-manager.mjs` sends `SIDECAR_ACTION_DISABLE` for auto-hibernate sidecars that don't match the active workspace after `hibernateAfterIdleMinutes` (10). That's the likely writer. It's inferred from Hangar's source and the config writes, not traced live. Hangar should treat plugin sidecars as plugin-controlled. That fix belongs in the Hangar repo, not here. (Fixed in Hangar 1.2.1: plugin sidecars never hibernate, and switching one off goes through the plugin's own switch.)
 
 ### What this changes in the Phase 2.5 plan
 
 - **Go for 2.5A.** Hand-port the stage mods into plugin sidecars as planned.
-- **5.3 conversation scoping is settled.** The view gets its conversation from `?conversationId=`, MCP calls from `_meta`, and hooks from the payload and `ANTIGRAVITY_CONVERSATION_ID`. The runtime must still handle a view with no conversation.
+- **5.3 conversation scoping is settled.** The view gets its conversation from `?conversationId=`, MCP calls from `_meta`, and hooks from the payload and `ANTIGRAVITY_CONVERSATION_ID`. The runtime must still handle a view with no conversation; see [Conversation identity](#conversation-identity) for what that means.
 - **`window.sidecar` is the runtime's job.** It has to serve `/preload.js`, loaded in `<head>` like `science` does so the host's one-shot `theme-change` isn't missed, and implement `/_sidecar/*` through `agentapi` if mods need it. It also needs its own light/dark fallback for lost theme messages.
 - **Treat `server_info.json` as possibly stale.** Orphans and hard kills leave it behind, and every restart changes the port and token. Callers re-read it on every call and fail open on a connection error (2 s timeout). The fixture does both, and that worked.
 - **Exit when the language server is gone.** On Windows, quitting the app hard-kills the language server and orphans every sidecar. The runtime should poll `ANTIGRAVITY_LS_ADDRESS` and exit when it stops answering, so ported mods don't pile up across restarts.
@@ -103,3 +103,31 @@ After `agy plugin uninstall porter-step0-hello` and deleting `sidecar_data/porte
 `config/import_manifest.json` and `config.json` `plugins` match the backup again.
 
 **Unexpected: 23 old conversations were deleted.** They were the 23 oldest (last written 2026-09-28/29), with their `brain/` folders and one browser recording. The profile held 521 conversations before the test. Adding the 2 test conversations and removing 23 leaves exactly 500. The language server has a `max_conversations` setting, so the app most likely prunes history to the newest 500 when conversations are added. That's inferred from the counts and the binary, not traced in a log. They're intact in the backup. Anyone repeating this on a real profile with more than 500 conversations should expect it.
+
+## Conversation identity
+
+**Question.** How does a sidecar view know which conversation is selected? Hangar and Context Monitor used to rank conversations by the language server's `lastUserViewTime` and pick the newest, which kept showing the wrong conversation after a switch.
+
+**Run.** 2026-10-25/26, Antigravity desktop 2.26.0, Windows 11. Static results come from the app's UI bundle, which the language server serves as `main.js` (the `app.asar` is only a thin Electron shell), and from the language server binary's strings. Live results come from the app's DevTools target list (`%APPDATA%\Antigravity\DevToolsActivePort`, then `/json/list`), which shows every sidecar iframe with its full URL, plus read-only `Runtime.evaluate` in those frames.
+
+| Finding | Evidence | Label |
+| :-- | :-- | :-- |
+| **One iframe per conversation.** The sidecar view appends the focused conversation (`?focused=` from the `/c/<ids>` route) to the sidecar URL as `conversationId`, and keeps iframes per URL. A switch shows a different iframe. The old one stays mounted with `visibility: hidden`. | Bundle: `conversationId:OR()` in the sidecar view component, iframes registered per URL, `cleanupConversationSidecarIframes`. Live: with two conversations open, one Hangar frame per conversation (`conversationId=7899a1c7…` and `…=40cfdb13…`), each with a Context Monitor child carrying the same id. After switching away and back, each frame still showed its own conversation's title. | live |
+| **The app never tells a view about a switch.** It posts only `theme-change` and `workspace-change`. `window.sidecar.conversationId` is read once from the URL and never changes. There's no `onConversationChange`. | `conversation-change` appears nowhere in the bundle, `app.asar` or the language server. The preload template is embedded in the language server binary. | static |
+| **`lastUserViewTime` can't tell the previous conversation from the next.** On every switch the app calls `UpdateConversationAnnotations{cascadeIds:[prev, next]}` with one timestamp. The next one is stamped only if the window has focus. | Bundle: the `conversationViewing` middleware. Live: after a switch, the two conversations had the same `lastUserViewTime`, and a no-id guess picked the other one. | static, with a live symptom |
+| **No API answers "which conversation is focused".** No language-server RPC returns it (all 352 `LanguageServerService` methods checked), and nothing on disk stores it per window. `UserSettings.lastSelectedCascadeId` is one global value. `displayedRootConversationId` exists only on the internal agent-browser subscription. | Language server strings, `app_storage.json`, `~/.gemini/antigravity/` | static |
+| **The new-conversation screen opens views with no `conversationId` at all**, on the home route (`/?section=outside-of-project`). | Live: the Hangar and Context Monitor frames opened there had no `conversationId` parameter. | live |
+| **`_new` is the app's placeholder for a pane without a conversation yet** (default layout `cascadeId:"_new"`, helper `a!=="_new"`). It wasn't seen in a host-built view URL. Hangar now passes it to its own child views to mean "new conversation". | Bundle | static |
+
+**What a view should do.**
+- The `conversationId` the frame was opened with **is** its conversation. A visible frame is the focused conversation, and `IntersectionObserver` sees the hidden ones leave the viewport.
+- Inside a host frame (`window.parent !== window`), a missing id or `_new` means there's no conversation yet. Show an empty state, not another conversation's data.
+- Only a standalone browser tab, with no host, has to guess from view times.
+- One sidecar process serves every window. Keep no per-poll "previous answer" state on the server: polls from different windows would mix it up.
+
+**Where it's implemented.**
+- `antigravity-sidecar-kit` 1.3.0: `resolveActiveWorkspace` returns the frame's own id, and `isRealConversationId` / `NEW_CONVERSATION_ID` are exported.
+- Context Monitor 1.2.0 and 1.2.1: follows the frame's id, and shows "No conversation yet" on a new-conversation view.
+- Hangar 1.2.1 and 1.2.2: each Hangar frame keeps its own id and passes it, or `_new`, to its child views.
+
+Live after those releases: on the new-conversation screen with Hangar's tab open, Hangar's frame had no id, its Context Monitor child got `conversationId=_new` and showed the empty state, while the two conversations' frames kept showing their own titles.
