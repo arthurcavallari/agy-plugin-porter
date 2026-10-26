@@ -4,5 +4,9 @@ name: agy-plugin-porter CodeQL config
 # in the npm package. By design it reads a token from server_info.json and sends it to
 # its sidecar over loopback, which js/file-access-to-http reports with no sanitizer to
 # clear it. The same flow in shipped code (scripts/mod-runtime/, Phase 2.5B) stays scanned.
+#
+# spike/ is the Phase 2.5A hand-port spike: also test-only and unshipped, with the same
+# loopback flow, and it vendors upstream mod source that is kept unchanged on purpose.
 paths-ignore:
   - test/fixtures/hello-pane
+  - spike
