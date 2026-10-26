@@ -1,0 +1,19 @@
+{
+  "plugin": "porter-spike-replay-theater",
+  "displayName": "Porter spike: Replay Theater",
+  "description": "Phase 2.5A spike: hamzafer's replay-theater Claude Code mod, hand-ported to an Antigravity plugin sidecar. Not for everyday use.",
+  "title": "Replay Theater",
+  "sidecar": "pane",
+  "entry": "register.mjs",
+  "mcpServer": "replay-theater",
+  "source": { "repo": "hamzafer/claude-code-mods", "sha": "fd249d5e8dfd7f1094d741e42e0b1cca5f75311a", "path": "mods/replay-theater/hooks" },
+  "hooks": {
+    "SessionStart": true,
+    "PreInvocation": true,
+    "Stop": true,
+    "PreToolUse": "write_to_file|write_file|replace_file_content|edit_file|multi_replace_file_content",
+    "PostToolUse": "write_to_file|write_file|replace_file_content|edit_file|multi_replace_file_content"
+  },
+  "commands": [{ "name": "replay", "description": "Step through the last turn's file edits" }],
+  "staticTools": []
+}

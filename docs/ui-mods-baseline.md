@@ -131,3 +131,124 @@ After `agy plugin uninstall porter-step0-hello` and deleting `sidecar_data/porte
 - Hangar 1.2.1 and 1.2.2: each Hangar frame keeps its own id and passes it, or `_new`, to its child views.
 
 Live after those releases: on the new-conversation screen with Hangar's tab open, Hangar's frame had no id, its Context Monitor child got `conversationId=_new` and showed the empty state, while the two conversations' frames kept showing their own titles.
+
+## Phase 2.5A spike
+
+**Verdict: go for 2.5B, with the limits below.** All three stage mods run as Antigravity plugin sidecars from their unchanged upstream source. task-board and replay-theater port cleanly. side-pane ports partially: Antigravity can't open a pane by itself, and it has no hidden per-prompt context.
+
+**Run.** 2026-10-26, Antigravity desktop 2.26.0 (language server 2.26.0), `agy` CLI 1.4.5, Windows 11. Sidecars, hooks and MCP servers ran on the app's bundled Node, v24.21.0. Times from `runtime.log` are UTC. Times from `language_server.log` are local (UTC+11).
+
+**Environment.** The real profile again, with step 0's safeguards. With the app closed, both folders were copied to `backups\spike2.5a-20261026-1454` and hashed. Every file matched except the `cli.log` symlink, which robocopy can't copy without admin rights. Installs went through `agy plugin install`/`uninstall`, and the on/off switch through **Customizations > Plugins**. The edits ran in a throwaway workspace, `C:\Users\arthu\spike-scratch`.
+
+**What was built.** [`spike/`](../spike/README.md) holds each mod's upstream source at a pinned commit, plus a hand-written runtime, the design in plan §5:
+- `server.mjs` + `engine.mjs` run the mod's `register(on)` against a stand-in `$`. Each conversation gets its own module instance, so module variables and `$.state` are per conversation, like Claude Code's per-session state.
+- The view (`ui.html`) draws the element trees and posts clicks back. A toolbar has one button per registered command.
+- `hook.mjs` forwards SessionStart, PreInvocation, PreToolUse, PostToolUse and Stop to the sidecar.
+- `mcp-entry.mjs` serves `$.tool.register` tools, plus one `slash_<command>` tool per command. A generated skill per command calls that tool.
+
+`spike/smoke.mjs` replays agy's side offline, 21 checks per run. Every check passed under system Node and the app's Node.
+
+| Plugin | Mod source | Validate (`--strict --json`) |
+| :-- | :-- | :-- |
+| `porter-spike-task-board` | `whyashthakker/awesome-claude-code-mods` `c53a70b`, `mods/task-board` | `sidecars 1, mcpServers 1, hooks 1, skills 1` |
+| `porter-spike-replay-theater` | `hamzafer/claude-code-mods` `fd249d5`, `mods/replay-theater` | same |
+| `porter-spike-side-pane` | `xixiaofinland/side-pane` `66fe8a1`, `plugins/side-pane` | same |
+
+`--strict` passes once `%APPDATA%\Antigravity\bin` is on PATH. Without it, it fails only on step 0's known `agy-node` warning.
+
+### Scorecard
+
+*works* runs as in Claude Code. *partial* runs with the fallback shown. *not possible* has no Antigravity equivalent.
+
+**Render sites and elements**
+
+| Item | Result | Evidence | Label |
+| :-- | :-- | :-- | :-- |
+| Pane | **works**. It draws in the sidecar's view and redraws over SSE. | All three panes, read from the app's frames through DevTools | live |
+| `Box`, `Text` (nested, `bold`, `dimColor`, `color`, `wrap`) | **works** | replay-theater's diff and step strip, task-board's frame | live |
+| `Button` (`label` or children, `plain`, `variant`, `hotkey`) | **works**, hotkeys included once the pane has focus | Toggle, Delete, Prev, Next, copy, quote, and **n**/**p** | live |
+| `Input` (`onSubmit`) | **works** | task-board added tasks | live |
+| `Markdown` | **works**, with a small renderer (headings, lists, code, bold, links) | side-pane's lunch options | live |
+| `Code`, `Divider`, `Select` | Drawn, but none of the three mods uses them | `ui.html` | static |
+| AbovePrompt, PromptHint, transcript sites | Not exercised. None of the three mods uses them. | Plan §5.5 stands | static |
+
+**Events**
+
+| Claude event | Antigravity source | Result | Label |
+| :-- | :-- | :-- | :-- |
+| `session.start` | First contact for a conversation (hook, view or MCP call) | **works**. The cwd comes from the hook's `workspacePaths`. A cwd learned later reruns `session.start`, as a Claude Code reload does. | live |
+| `turn.start` | First PreInvocation after SessionStart or Stop | **works** | live |
+| `turn.complete` | Stop | **works**. replay-theater's toast fired once per turn. | live |
+| `tool.call`, built-in tools | PreToolUse + PostToolUse, pause and resume (plan §5.2) | **works** for observing. PostToolUse carries the same `stepIdx` and args as its PreToolUse, so every handler resumed by `stepIdx`. `next()` resolves to `{ isError }` from `error`. A Pre with no Post is dropped at Stop. | live (drop: offline) |
+| `tool.call` `{ deny }` / changed input | PreToolUse `deny` / `overwrite` | Implemented, but none of the three mods does it, so it wasn't exercised | static |
+| `tool.call`, the mod's own tools | MCP `tools/call` to the sidecar | **works**. The agent called side-pane's `update`, and the handler's `{ result }` came back as the tool result. A `{ deny }` becomes an MCP error. | live (deny: offline) |
+| `tool.describe` | Applied at `tools/list` | **partial**. agy cached `update` with the mod's full description. `isDeferred` has no equivalent and is ignored. | live |
+| `prompt.context` | PreInvocation `injectSteps` | **partial**. Only `systemMessage` works, and it shows in the transcript as "Hook Json PreInvocation" on **every** model call (10 for 4 turns). Claude's context is hidden and once per prompt. | live |
+| `command.run` | A generated skill calls the `slash_<name>` tool. Also a toolbar button in the view. | **partial**. Both paths ran the handler. The skill path costs a model turn, and its reply carries a `sidecar://` link to open the pane. | live |
+| `ui.close` | The view's own tab close (×) | **partial**. Closing Antigravity's own pane tab sends the sidecar nothing, so the mod never hears about it. | live |
+
+**`$` nouns**
+
+| API | Result | Label |
+| :-- | :-- | :-- |
+| `$.ui.resolve`, `$.ui.invalidate` | **works** | live |
+| `$.ui.open` | **partial**. The pane exists in the runtime, but only the user can show it: a `sidecar://` link or the pane's tab. A server can't open a view, and `window.sidecar.ui.toggleAuxPane` only toggles the whole side panel. | live |
+| `$.ui.close` | **works**, within the view | live |
+| `$.ui.panes` | **partial**. `isPlaced`/`isShown` count connected views. Hangar embeds every sidecar view in every conversation, so a hidden copy keeps them true. | live |
+| `$.ui.toast` | **works** in the view. It isn't seen when no view is open. | live |
+| `$.ui.status` | Implemented (status bar). Not reached live: replay-theater calls it only from the second turn on. | static |
+| `$.ui.copy` | **works**. The clipboard write succeeded inside the view's frame, after the click's round trip. | live |
+| `$.prompt.fill` | **partial**. It copies the text and says "paste it into the prompt box". It never drafts or sends. | live |
+| `$.store` | **works**. It's per plugin and persistent (`store.json` in the data dir). task-board's keys are per workspace. | live |
+| `$.state` and `'claude-code'` `atom`/`read`/`update` | **works**. They're per conversation, and a write redraws the pane. | live |
+| `$.clock.now`, `$.fs.read`, `$.session.cwd`, `$.command.register`, `$.tool.register` | **works** | live |
+| Anything else | Rejects with "not available in the Antigravity port". Unawaited calls can't crash the sidecar. | static |
+
+### Other findings
+
+| Finding | Evidence | Label |
+| :-- | :-- | :-- |
+| **An unknown `injectSteps` type ends the whole agent turn.** A guessed `hookEphemeralMessage` step gave `unknown injected step type: <nil>`. Because PreInvocation runs before every model call, that broke every conversation until the plugin was switched off. The runtime must only emit step types proven live. | Agent error and `language_server.log`, 16:45:55 | live |
+| **The desktop app uses the CLI's tool names:** `write_file {Path, Content, Overwrite}` and `edit_file {Path, Target, Replacement}`, not `write_to_file`/`replace_file_content`. | Hook payloads | live |
+| **Hooks run on `agy-node`.** `agy-node sidecars/pane/hook.mjs <Event>` worked for all five events. Ported plugins don't need a system Node. | Hook log | live |
+| **`a\|b` matchers work.** `write_to_file\|write_file\|…` matched `write_file` and `edit_file`. | Hook log | live |
+| **Hooks fail open.** With the sidecar unreachable (`server_info.json` pointing at a dead port, and earlier with the file missing), each hook printed "no opinion", logged `porter spike hook: fetch failed; not blocking`, and the turn ran normally. | `notes.txt` gained `delta`; `command_hook_executor.go` stderr lines | live |
+| **An orphan can delete its replacement's `server_info.json`.** After a quit, the old side-pane sidecar noticed the language server was gone 2 s after its replacement started, and removed the new file. The MCP tool then reported "sidecar not running". Fixed: a sidecar removes the file only if it still holds its own pid. | `runtime.log` 07:06:43 and 07:06:45 (UTC) | live |
+| **`agy plugin uninstall` fails while the plugin's sidecar runs.** On Windows the sidecar's cwd is its own folder, so the uninstall stops with "plugin is in use by another process". It has already deleted the files by then, and the plugin is gone from `config.json`. Empty folders stay behind, and the next `install` fails until they're removed. Switching the plugin off first avoids it. | `agy` output, `language_server.log` 18:43 | live |
+| **A reinstall is picked up live.** With the app running and the plugin switched off, `agy plugin uninstall` then `install` started the new sidecar build (`Config changed for sidecar …`) with no restart or toggle. | `language_server.log` 17:49:48 | live |
+| **The model may pick a native tool over a mod's tool.** Asked for options, Gemini used Antigravity's own question widget rather than side-pane's `update`, even with the nudge injected. It called `update` only when asked to. | Transcript | live |
+| **Hook round trips are cheap.** The sidecar answered every hook in 0–1 ms. Each hook still costs a Node process start. | `runtime.log` `ms` | live |
+
+### TS/TSX transform (plan §5.8)
+
+Both options transformed both TSX mods, and the pane trees they produced were identical, compared at the end of every offline scenario.
+- **`esbuild`** (`jsx: transform`, factory `h`, fragment `Fragment`): no changes needed.
+- **`module.stripTypeScriptTypes` plus a hand-written JSX pass** ([`spike/jsx.mjs`](../spike/jsx.mjs), about 140 lines): `stripTypeScriptTypes` rejects JSX, so the pass has to run first. It needed two bug fixes for these two files alone (nested JSX inside expressions, and template literals). It still can't handle generic arrow functions in `.tsx`.
+
+**Pick: `esbuild` as an optional dependency of the porter**, loaded only for TS/TSX mods. The hand-written pass is too fragile for the 80 KB mods in the catalog. Mods that need a transform are reported unported when `esbuild` is missing.
+
+### Which mods port
+
+| Mod | Verdict | Registry entry (Phase 5) |
+| :-- | :-- | :-- |
+| task-board | Clean | Yes |
+| replay-theater | Clean. Its own `relative()` splits paths on `/`, so Windows shows full paths. | Yes |
+| side-pane | Partial: no auto-open, visible piling context, and a model that may prefer its native question tool | Not yet |
+
+### What this changes for 2.5B
+
+- **`prompt.context`:** emit `systemMessage` once per turn (the first PreInvocation), never per call, and report the mapping as partial. Keep looking for a hidden step type, but only ship one that is proven live.
+- **Placement:** report `isPlaced: false` until a *visible* view is connected. The view reports `document.visibilityState` plus an `IntersectionObserver` result. Command results carry a `sidecar://` link to open the pane.
+- **Uninstall:** switch the plugin off (or stop its sidecar) before `agy plugin uninstall`. This applies to the porter's docs and to Hangar's uninstall path.
+- **`server_info.json`:** a sidecar deletes it only while it still holds its own pid.
+- **Tool map:** the desktop app's tool names match the CLI's. The shim's existing map covers them.
+- **Commands:** keep both paths: a skill that calls `slash_<name>`, and the view's toolbar. Label the argument field, with the command's `argumentHint` as help text rather than the only text.
+- **Transform:** `esbuild` as an optional dependency (above).
+
+### Reproduce
+
+1. Close the app and back up both folders (see step 0).
+2. `node spike/build.mjs --esbuild <path>/node_modules/esbuild`, `node spike/smoke.mjs`, then `agy plugin validate --strict --json` and `agy plugin install` for each `spike/out/porter-spike-*`.
+3. Start the app in a throwaway workspace. Run `/task-board <task>`, edit a file and run `/replay`, then ask the agent to "use the side-pane update tool" to list options. Open each `sidecar://` link and use the panes.
+4. Read `~/.gemini/antigravity/sidecar_data/porter-spike-*/pane/data/runtime.log`. The app's own frames are listed at `http://127.0.0.1:<DevToolsActivePort>/json/list`.
+5. To uninstall, switch each plugin off in **Customizations > Plugins** first, then `agy plugin uninstall porter-spike-<mod>`.

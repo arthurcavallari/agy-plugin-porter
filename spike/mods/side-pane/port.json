@@ -1,0 +1,16 @@
+{
+  "plugin": "porter-spike-side-pane",
+  "displayName": "Porter spike: Side pane",
+  "description": "Phase 2.5A spike: xixiaofinland's side-pane Claude Code mod, hand-ported to an Antigravity plugin sidecar. Not for everyday use.",
+  "title": "Side pane",
+  "sidecar": "pane",
+  "entry": "register.mjs",
+  "mcpServer": "side-pane",
+  "source": { "repo": "xixiaofinland/side-pane", "sha": "66fe8a1ee05ff2288b174adcbec73bdc0ec8449c", "path": "plugins/side-pane/hooks" },
+  "hooks": { "SessionStart": true, "PreInvocation": true },
+  "commands": [{ "name": "side-pane", "description": "Show or hide the side pane (`clear` empties it)", "argumentHint": "[clear]" }],
+  "staticTools": [
+    { "name": "update", "description": "Fill the side pane the user sees next to the conversation.", "inputSchema": { "type": "object", "properties": { "markdown": { "type": "string" } }, "required": ["markdown"] } },
+    { "name": "clear", "description": "Empty the side pane once nothing in it is open any more.", "inputSchema": { "type": "object", "properties": {} } }
+  ]
+}

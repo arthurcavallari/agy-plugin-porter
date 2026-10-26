@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ported mod</title>
+<script>
+  // Loaded first, like science's view, so the host's one-shot theme-change isn't missed.
+  document.write('<script src="/preload.js' + location.search.replace(/"/g, '') + '"><\/script>');
+</script>
+<style>
+  :root { --bg: #fafafa; --fg: #1f1f1f; --dim: #6b6b6b; --line: rgba(127,127,127,.25); --accent: #0b6bcb;
+    --cyan: #0e7490; --green: #15803d; --red: #b91c1c; --yellow: #a16207; --magenta: #a21caf; --blue: #1d4ed8; }
+  :root[data-theme="dark"] { --bg: #181818; --fg: #e6e6e6; --dim: #9a9a9a; --accent: #4ea1ff;
+    --cyan: #22d3ee; --green: #4ade80; --red: #f87171; --yellow: #facc15; --magenta: #e879f9; --blue: #60a5fa; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #181818; --fg: #e6e6e6; --dim: #9a9a9a; --accent: #4ea1ff;
+    --cyan: #22d3ee; --green: #4ade80; --red: #f87171; --yellow: #facc15; --magenta: #e879f9; --blue: #60a5fa; } }
+  body { font: 13px/1.45 system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--fg); }
+  header { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  header .cmd { display: inline-flex; gap: 4px; }
+  header input { width: 9em; }
+  nav { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--line); }
+  nav button { border: 0; background: none; color: var(--dim); padding: 6px 8px; cursor: pointer; }
+  nav button.on { color: var(--fg); border-bottom: 2px solid var(--accent); }
+  nav .x { margin-left: 2px; opacity: .6; }
+  main { padding: 10px; }
+  footer { position: sticky; bottom: 0; padding: 4px 10px; border-top: 1px solid var(--line); color: var(--dim); background: var(--bg); min-height: 1.4em; }
+  #toasts { position: fixed; right: 10px; bottom: 34px; display: flex; flex-direction: column; gap: 6px; max-width: 80%; }
+  .toast { background: var(--fg); color: var(--bg); padding: 6px 10px; border-radius: 6px; font-size: 12px; }
+  .empty { color: var(--dim); padding: 20px 10px; }
+  button, input, select { font: inherit; color: inherit; }
+  button.el { background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+  button.el.primary { border-color: var(--accent); color: var(--accent); }
+  button.el.plain { border: 0; padding: 0 2px; text-align: left; }
+  button.el:hover { background: var(--line); }
+  input, select { background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; }
+  .Text { white-space: pre-wrap; }
+  .Text.trunc { white-space: pre; overflow: hidden; text-overflow: ellipsis; display: block; }
+  pre { background: var(--line); padding: 6px; margin: 0; white-space: pre-wrap; }
+  .md p, .md ul, .md ol, .md h1, .md h2, .md h3 { margin: 2px 0; }
+  .md h1, .md h2, .md h3 { font-size: 13px; }
+  .md code { background: var(--line); padding: 0 3px; border-radius: 3px; }
+  .dim { color: var(--dim); }
+  .error { color: var(--red); }
+</style>
+</head>
+<body>
+<header id="commands"></header>
+<nav id="tabs"></nav>
+<main id="pane"><div class="empty">Connecting…</div></main>
+<footer id="status"></footer>
+<div id="toasts"></div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  const token = params.get('token') || '';
+  const raw = params.get('conversationId') || '';
+  // A frame with no id, or _new, belongs to a conversation that doesn't exist yet.
+  const conv = raw && raw !== '_new' ? raw : '';
+  const headers = { 'Content-Type': 'application/json', 'X-Sidecar-Token': token };
+  const post = (path, body) => fetch(path, { method: 'POST', headers, body: JSON.stringify({ conv, ...body }) }).then((r) => r.json());
+  let state = { panes: [], commands: [], status: null };
+  let active = null;
+
+  // Host theme: theme-change carries themeType (light/dark).
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.ancestorOrigins?.[0]) return;
+    if (e.data?.type === 'theme-change') {
+      const t = e.data.payload?.themeType ?? e.data.payload?.theme;
+      if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+    }
+  });
+
+  function toast(text) {
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.textContent = text;
+    $('toasts').appendChild(el);
+    setTimeout(() => el.remove(), 6000);
+  }
+  async function copy(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch {}
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  }
+  const status = (text) => { $('status').textContent = text ?? ''; };
+
+  // Minimal Markdown: headings, lists, code, bold, italics, links. Text is escaped first.
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const inline = (s) => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|\W)\*([^*]+)\*/g, '$1<i>$2</i>').replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  function markdown(text) {
+    const out = [];
+    let list = null;
+    for (const line of String(text).split('\n')) {
+      const h = /^(#{1,6})\s+(.*)$/.exec(line);
+      const li = /^\s*(?:[-*+]|(\d+)[.)])\s+(.*)$/.exec(line);
+      if (li) {
+        const tag = li[1] ? 'ol' : 'ul';
+        if (list !== tag) { if (list) out.push(`</${list}>`); out.push(li[1] ? `<ol start="${li[1]}">` : '<ul>'); list = tag; }
+        out.push(`<li>${inline(li[2])}</li>`);
+        continue;
+      }
+      if (list) { out.push(`</${list}>`); list = null; }
+      if (h) out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`);
+      else if (line.trim()) out.push(`<p>${inline(line)}</p>`);
+    }
+    if (list) out.push(`</${list}>`);
+    const div = document.createElement('div');
+    div.className = 'md';
+    div.innerHTML = out.join('');
+    return div;
+  }
+
+  const COLORS = ['cyan', 'green', 'red', 'yellow', 'magenta', 'blue', 'gray', 'grey', 'white', 'black'];
+  const textOf = (n) => (typeof n === 'string' ? n : (n.children ?? []).map(textOf).join(''));
+  const act = (cb, ...args) => post('/api/action', { cb: cb.$cb, args }).then((r) => { if (r.error) toast(r.error); });
+  const unit = (v) => `${Number(v) * 0.5}em`;
+
+  // Element trees from the mod ($.ui.resolve's table) -> DOM.
+  function draw(node, inText = false) {
+    if (typeof node === 'string') return document.createTextNode(node);
+    const p = node.props ?? {};
+    const kids = (el, nested = inText) => { for (const c of node.children ?? []) el.appendChild(draw(c, nested)); return el; };
+    switch (node.type) {
+      case 'Box': {
+        const el = document.createElement('div');
+        el.style.display = 'flex';
+        el.style.flexDirection = p.flexDirection === 'column' ? 'column' : 'row';
+        if (p.flexWrap) el.style.flexWrap = p.flexWrap;
+        if (p.gap != null) el.style.gap = unit(p.gap);
+        if (p.columnGap != null) el.style.columnGap = unit(p.columnGap);
+        if (p.rowGap != null) el.style.rowGap = unit(p.rowGap);
+        if (p.flexGrow != null) el.style.flexGrow = p.flexGrow;
+        if (p.alignItems) el.style.alignItems = p.alignItems;
+        if (p.justifyContent) el.style.justifyContent = p.justifyContent;
+        if (el.style.flexDirection === 'row') el.style.alignItems ||= 'baseline';
+        return kids(el, false);
+      }
+      case 'Text': {
+        const el = document.createElement('span');
+        el.className = 'Text' + (p.wrap?.startsWith?.('truncate') ? ' trunc' : '');
+        if (!inText) el.style.display = 'block';
+        if (p.bold) el.style.fontWeight = '600';
+        if (p.italic) el.style.fontStyle = 'italic';
+        if (p.underline) el.style.textDecoration = 'underline';
+        if (p.strikethrough) el.style.textDecoration = 'line-through';
+        if (p.dimColor) el.style.color = 'var(--dim)';
+        if (p.color) el.style.color = COLORS.includes(p.color) ? `var(--${p.color === 'grey' || p.color === 'gray' ? 'dim' : p.color}, ${p.color})` : p.color;
+        return kids(el, true);
+      }
+      case 'Button': {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'el' + (p.plain ? ' plain' : '') + (p.variant === 'primary' ? ' primary' : '') + (p.dimColor ? ' dim' : '');
+        el.textContent = p.label ?? textOf(node);
+        if (p.hotkey) { el.title = `Hotkey: ${p.hotkey}`; el.dataset.hotkey = p.hotkey; }
+        if (p.onPress?.$cb) el.onclick = () => act(p.onPress);
+        return el;
+      }
+      case 'Input': {
+        const form = document.createElement('form');
+        form.style.display = 'flex';
+        form.style.gap = '4px';
+        const input = document.createElement('input');
+        input.placeholder = p.placeholder ?? p.label ?? '';
+        input.value = p.value ?? '';
+        input.setAttribute('aria-label', p.label ?? 'input');
+        input.style.flex = '1';
+        const btn = document.createElement('button');
+        btn.className = 'el';
+        btn.textContent = p.submitLabel ?? 'OK';
+        form.append(input, btn);
+        form.onsubmit = (e) => {
+          e.preventDefault();
+          if (p.onSubmit?.$cb) act(p.onSubmit, input.value);
+          else if (p.onChange?.$cb) act(p.onChange, input.value);
+          input.value = '';
+        };
+        return form;
+      }
+      case 'Select': {
+        const sel = document.createElement('select');
+        for (const o of p.options ?? []) sel.add(new Option(o.label ?? String(o.value), o.value));
+        if (p.value !== undefined) sel.value = p.value;
+        const cb = p.onChange ?? p.onSelect ?? p.onSubmit;
+        if (cb?.$cb) sel.onchange = () => act(cb, sel.value);
+        return sel;
+      }
+      case 'Code': {
+        const pre = document.createElement('pre');
+        pre.textContent = p.source ?? textOf(node);
+        return pre;
+      }
+      case 'Markdown':
+        return markdown(p.text ?? p.source ?? textOf(node));
+      case 'Divider':
+        return document.createElement('hr');
+      default: {
+        const el = document.createElement('div');
+        el.dataset.type = node.type;
+        el.title = `${node.type} isn't drawn by the Antigravity port`;
+        return kids(el);
+      }
+    }
+  }
+
+  function renderAll() {
+    const cmds = $('commands');
+    cmds.replaceChildren();
+    for (const c of state.commands ?? []) {
+      const wrap = document.createElement('span');
+      wrap.className = 'cmd';
+      const btn = document.createElement('button');
+      btn.className = 'el';
+      btn.textContent = `/${c.name}`;
+      btn.title = c.description ?? '';
+      const arg = c.argumentHint ? Object.assign(document.createElement('input'), { placeholder: c.argumentHint }) : null;
+      btn.onclick = () => post('/api/command', { command: c.name, args: arg?.value ?? '' }).then(() => { if (arg) arg.value = ''; });
+      wrap.append(btn, ...(arg ? [arg] : []));
+      cmds.appendChild(wrap);
+    }
+    cmds.hidden = !(state.commands ?? []).length;
+    const panes = state.panes ?? [];
+    if (!panes.some((p) => p.id === active)) active = panes.at(-1)?.id ?? null;
+    const tabs = $('tabs');
+    tabs.replaceChildren();
+    for (const p of panes) {
+      const b = document.createElement('button');
+      b.className = p.id === active ? 'on' : '';
+      b.textContent = p.title;
+      b.onclick = () => { active = p.id; renderAll(); };
+      const x = document.createElement('span');
+      x.className = 'x';
+      x.textContent = ' ×';
+      x.title = 'Close this pane';
+      x.onclick = (e) => { e.stopPropagation(); post('/api/close', { id: p.id }); };
+      b.appendChild(x);
+      tabs.appendChild(b);
+    }
+    tabs.hidden = panes.length === 0;
+    const pane = panes.find((p) => p.id === active);
+    const main = $('pane');
+    if (!pane) {
+      main.innerHTML = '<div class="empty">No pane is open. Use a command above, or ask the agent.</div>';
+      return;
+    }
+    if (pane.error) { main.innerHTML = ''; main.appendChild(Object.assign(document.createElement('div'), { className: 'error', textContent: pane.error })); return; }
+    main.replaceChildren(pane.tree ? draw(pane.tree) : Object.assign(document.createElement('div'), { className: 'empty', textContent: '(empty)' }));
+  }
+
+  // Hotkeys of the active pane's buttons, when no field has focus.
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName ?? '')) return;
+    const btn = $('pane').querySelector(`button[data-hotkey="${CSS.escape(e.key)}"]`);
+    if (btn) { e.preventDefault(); btn.click(); }
+  });
+
+  if (!conv) {
+    $('pane').innerHTML = '<div class="empty">No conversation yet. Start one, then reopen this pane.</div>';
+    return;
+  }
+  const events = new EventSource(`/api/events?token=${encodeURIComponent(token)}&conv=${encodeURIComponent(conv)}`);
+  events.onmessage = async (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'hello') document.title = msg.mod;
+    else if (msg.type === 'state') { state = msg; status(msg.status); renderAll(); }
+    else if (msg.type === 'status') status(msg.text);
+    else if (msg.type === 'toast') toast(msg.text);
+    else if (msg.type === 'copy') toast((await copy(msg.text)) ? 'Copied.' : 'Could not copy.');
+    else if (msg.type === 'fill') toast((await copy(msg.text)) ? 'Copied. Paste it into the prompt box.' : 'Could not copy the text for the prompt box.');
+  };
+  events.onerror = () => status('Disconnected from the sidecar. Retrying…');
+
+  // The workspace is the conversation's cwd until a hook reports it.
+  (async () => {
+    try {
+      const uris = await window.sidecar?.getWorkspaceUris?.();
+      const first = Array.isArray(uris) ? uris[0] : null;
+      const cwd = first ? decodeURIComponent(new URL(first).pathname).replace(/^\/([A-Za-z]:)/, '$1') : '';
+      await post('/api/view', { cwd });
+    } catch {}
+  })();
+})();
+</script>
+</body>
+</html>
