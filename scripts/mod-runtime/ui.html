@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ported mod</title>
+<!-- Loaded first, like science's view, so the host's one-shot theme-change isn't missed.
+     preload.js reads the token from this page's URL, so its own URL needs none. -->
+<script src="/preload.js"></script>
+<style>
+  :root { --bg: #fafafa; --fg: #1f1f1f; --dim: #6b6b6b; --line: rgba(127,127,127,.25); --accent: #0b6bcb;
+    --cyan: #0e7490; --green: #15803d; --red: #b91c1c; --yellow: #a16207; --magenta: #a21caf; --blue: #1d4ed8; }
+  :root[data-theme="dark"] { --bg: #181818; --fg: #e6e6e6; --dim: #9a9a9a; --accent: #4ea1ff;
+    --cyan: #22d3ee; --green: #4ade80; --red: #f87171; --yellow: #facc15; --magenta: #e879f9; --blue: #60a5fa; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #181818; --fg: #e6e6e6; --dim: #9a9a9a; --accent: #4ea1ff;
+    --cyan: #22d3ee; --green: #4ade80; --red: #f87171; --yellow: #facc15; --magenta: #e879f9; --blue: #60a5fa; } }
+  body { font: 13px/1.45 system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--fg); }
+  header { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  header .cmd { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+  header .cmd label { color: var(--dim); font-size: 12px; }
+  header .cmd input { width: 9em; }
+  header .cmd .help { color: var(--dim); font-size: 11px; width: 100%; }
+  #strips > div { padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  nav { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--line); }
+  nav button { border: 0; background: none; color: var(--dim); padding: 6px 8px; cursor: pointer; }
+  nav button.on { color: var(--fg); border-bottom: 2px solid var(--accent); }
+  nav .x { margin-left: 2px; opacity: .6; }
+  main { padding: 10px; }
+  footer { position: sticky; bottom: 0; padding: 4px 10px; border-top: 1px solid var(--line); color: var(--dim); background: var(--bg); min-height: 1.4em; }
+  #toasts { position: fixed; right: 10px; bottom: 34px; display: flex; flex-direction: column; gap: 6px; max-width: 80%; }
+  .toast { background: var(--fg); color: var(--bg); padding: 6px 10px; border-radius: 6px; font-size: 12px; }
+  .empty { color: var(--dim); padding: 20px 10px; }
+  button, input, select { font: inherit; color: inherit; }
+  button.el { background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+  button.el.primary { border-color: var(--accent); color: var(--accent); }
+  button.el.plain { border: 0; padding: 0 2px; text-align: left; }
+  button.el.dim { color: var(--dim); }
+  button.el:hover { background: var(--line); }
+  input, select { background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; }
+  form.input { display: flex; gap: 4px; }
+  form.input input { flex: 1; }
+  .Text { white-space: pre-wrap; }
+  .Text.trunc { white-space: pre; overflow: hidden; text-overflow: ellipsis; display: block; }
+  pre { background: var(--line); padding: 6px; margin: 0; white-space: pre-wrap; }
+  .md p, .md ul, .md ol, .md h1, .md h2, .md h3 { margin: 2px 0; }
+  .md h1, .md h2, .md h3 { font-size: 13px; }
+  .md code { background: var(--line); padding: 0 3px; border-radius: 3px; }
+  .error { color: var(--red); }
+</style>
+</head>
+<body>
+<header id="commands" hidden></header>
+<div id="strips"></div>
+<nav id="tabs" hidden></nav>
+<main id="pane"><div class="empty">Connecting…</div></main>
+<footer id="status"></footer>
+<div id="toasts"></div>
+<script src="/ui-draw.js"></script>
+<script src="/ui.js"></script>
+</body>
+</html>
