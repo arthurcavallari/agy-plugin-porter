@@ -252,3 +252,18 @@ Both options transformed both TSX mods, and the pane trees they produced were id
 3. Start the app in a throwaway workspace. Run `/task-board <task>`, edit a file and run `/replay`, then ask the agent to "use the side-pane update tool" to list options. Open each `sidecar://` link and use the panes.
 4. Read `~/.gemini/antigravity/sidecar_data/porter-spike-*/pane/data/runtime.log`. The app's own frames are listed at `http://127.0.0.1:<DevToolsActivePort>/json/list`.
 5. To uninstall, switch each plugin off in **Customizations > Plugins** first, then `agy plugin uninstall porter-spike-<mod>`.
+
+### Cleanup
+
+The three plugins were switched off, uninstalled with `agy plugin uninstall` (clean this time), and their `sidecar_data` folders deleted. With the app closed, both folders were hashed again and compared with the pre-install manifest.
+
+**Left behind by the spike plugins** (the app's and Hangar's, not removed by uninstall, as in step 0):
+- `config.json` `sidecars["porter-spike-<mod>/pane"]` for all three, and their project files `config/projects/<projectId>.json`
+- `antigravity/mcp/porter-spike-*`: the MCP tool cache (5 files)
+- In Hangar's `config/hangar.json`, side-pane in `layout.topSplitTabIds`, and `layout.pinnedTopSidecarId` moved from `context-monitor` to `porter-spike-side-pane/pane`. Hangar wrote this while the view was open, as it did in step 0. It now points at a sidecar that no longer exists.
+
+**Expected churn from using the app:**
+- the four test conversations (`brain/`, `conversations/`, `annotations/`, `presence/`) and the `spike-scratch` project
+- conversation summaries, app state, the Hangar and Context Monitor data, crash logs, a marketplace cache refresh, an `android-cli-plugin` update, and Chromium caches under `%APPDATA%\Antigravity`
+
+**Old conversations pruned again.** The profile held 508 conversations before the run. Adding the 4 test conversations removed the 12 oldest (last written 2026-09-29), which leaves exactly 500. That matches step 0's inference that the app keeps the newest 500. The 12 are intact in the backup.
