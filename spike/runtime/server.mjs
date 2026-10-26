@@ -1,7 +1,7 @@
 // Phase 2.5A spike sidecar: hosts one ported Claude Code mod (engine.mjs) and serves
 // its panes to the side-pane view, the hook forwarder (hook.mjs) and the MCP server
-// (mcp-entry.mjs). Zero dependencies. Every route needs this server's token (in
-// server_info.json) or the host's ANTIGRAVITY_SIDECAR_UI_TOKEN (the view's ?token=).
+// (mcp-entry.mjs). Zero dependencies. Every route but /preload.js needs this server's
+// token (in server_info.json) or the host's ANTIGRAVITY_SIDECAR_UI_TOKEN (the view's ?token=).
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -128,7 +128,9 @@ const routes = {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}`);
   const t = req.headers['x-sidecar-token'] || url.searchParams.get('token');
-  if (!t || (t !== token && t !== hostToken)) return send(res, 401, { error: 'no valid token' });
+  // preload.js is the SDK's own public file, loaded by a plain <script> tag.
+  const open = req.method === 'GET' && url.pathname === '/preload.js';
+  if (!open && (!t || (t !== token && t !== hostToken))) return send(res, 401, { error: 'no valid token' });
   const route = routes[`${req.method} ${url.pathname}`];
   if (!route) return send(res, 404, { error: 'not found' });
   try {

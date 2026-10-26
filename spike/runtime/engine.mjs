@@ -36,7 +36,7 @@ const ARG_NAMES = {
 export function toClaudeCall(toolCall) {
   const args = typeof toolCall?.args === 'string' ? safeJson(toolCall.args) : toolCall?.args ?? {};
   const e = { tool: AGY_TO_CLAUDE[toolCall?.name] ?? toolCall?.name ?? '' };
-  for (const [k, v] of Object.entries(args)) e[ARG_NAMES[k] ?? k] = v;
+  for (const [k, v] of Object.entries(args)) if (!UNSAFE_KEYS.has(k)) e[ARG_NAMES[k] ?? k] = v;
   const chunks = args.ReplacementChunks;
   if (Array.isArray(chunks) && chunks.length) {
     e.old_string = chunks.map((c) => c.TargetContent ?? '').join('\n…\n');
@@ -48,11 +48,14 @@ export function toClaudeCall(toolCall) {
 function overwriteOf(args, before, after) {
   const out = {};
   for (const k of Object.keys(args)) {
+    if (UNSAFE_KEYS.has(k)) continue;
     const name = ARG_NAMES[k] ?? k;
     if (after[name] !== before[name]) out[k] = after[name];
   }
   return Object.keys(out).length ? out : null;
 }
+// Tool args come from the model; never let one reach an object's prototype.
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 function safeJson(text) { try { return JSON.parse(text); } catch { return {}; } }
 
 const matches = (matcher, e) => !matcher || Object.entries(matcher).every(([k, v]) => e[k] === v);

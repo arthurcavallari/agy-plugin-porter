@@ -4,10 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ported mod</title>
-<script>
-  // Loaded first, like science's view, so the host's one-shot theme-change isn't missed.
-  document.write('<script src="/preload.js' + location.search.replace(/"/g, '') + '"><\/script>');
-</script>
+<!-- Loaded first, like science's view, so the host's one-shot theme-change isn't missed.
+     preload.js reads the token from this page's URL, so its own URL needs none. -->
+<script src="/preload.js"></script>
 <style>
   :root { --bg: #fafafa; --fg: #1f1f1f; --dim: #6b6b6b; --line: rgba(127,127,127,.25); --accent: #0b6bcb;
     --cyan: #0e7490; --green: #15803d; --red: #b91c1c; --yellow: #a16207; --magenta: #a21caf; --blue: #1d4ed8; }
