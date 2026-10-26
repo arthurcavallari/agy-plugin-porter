@@ -1,0 +1,13 @@
+{
+  "plugin": "porter-spike-task-board",
+  "displayName": "Porter spike: Task Board",
+  "description": "Phase 2.5A spike: whyashthakker's task-board Claude Code mod, hand-ported to an Antigravity plugin sidecar. Not for everyday use.",
+  "title": "Task Board",
+  "sidecar": "pane",
+  "entry": "register.js",
+  "mcpServer": "task-board",
+  "source": { "repo": "whyashthakker/awesome-claude-code-mods", "sha": "c53a70b8787c4270029af9648d6eb7054c6c29c3", "path": "mods/task-board/hooks" },
+  "hooks": { "SessionStart": true },
+  "commands": [{ "name": "task-board", "description": "Add tasks and toggle done status.", "argumentHint": "[entry]" }],
+  "staticTools": []
+}
