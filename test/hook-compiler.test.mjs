@@ -55,19 +55,19 @@ test('gemini fixture: BeforeTool -> PreToolUse, millisecond timeouts', () => {
   assert.equal(timed.shimConfig.hooks['pretooluse-1'].timeout, 3);
 });
 
-test('claude-mod fixture: modules reported as unported, nothing compiled', () => {
+test('claude-mod fixture: modules are left to the mod compiler, nothing compiled here', () => {
   const { hooks, shimConfig, report } = compileFixture('claude-mod');
   assert.equal(hooks, null);
   assert.equal(shimConfig, null);
-  assert.deepEqual(report.unported, [{ item: 'ui-mod:hooks/register.tsx', reason: 'Claude Code UI mods are not ported yet' }]);
+  assert.deepEqual(report, { ported: [], unported: [], warnings: [] });
 });
 
-test('modules plus hooks: hooks compile, modules are reported', () => {
+test('modules plus hooks: the classic hooks compile', () => {
   const { hooks, report } = compileHooks(
     claudeSource({ PreToolUse: [{ matcher: 'Bash', ...cmd('node guard.mjs') }] }, { modules: ['./mods/a.tsx', 'b.ts'] }),
     { slug: 'mixed' });
   assert.equal(hooks.mixed.PreToolUse[0].matcher, 'run_command');
-  assert.deepEqual(items(report.unported), ['ui-mod:hooks/mods/a.tsx', 'ui-mod:hooks/b.ts']);
+  assert.deepEqual(items(report.unported), []);
 });
 
 test('remapMatcher', () => {
@@ -129,7 +129,7 @@ test('writeHookPort replaces the staged foreign hooks and ships the shim', () =>
   assert.ok(JSON.parse(readFileSync(join(dir, 'hooks.json'), 'utf8'))['fixture-claude']);
 });
 
-test('writeHookPort drops a UI-mod hooks.json (mods are reported, never copied) and refuses to clobber a foreign shim', () => {
+test('writeHookPort drops a UI-mod hooks.json (the mod compiler writes its own) and refuses to clobber a foreign shim', () => {
   const dir = mkdtempSync(join(tmpdir(), 'porter-write-'));
   cpSync(fixture('claude-mod'), dir, { recursive: true });
   cpSync(join(dir, 'hooks/hooks.json'), join(dir, 'hooks.json'));
