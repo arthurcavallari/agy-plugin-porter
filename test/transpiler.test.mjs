@@ -10,6 +10,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { portPackage } from '../lib/index.mjs';
+import { loadEsbuild } from '../lib/mod-transform.mjs';
 import { transpile } from '../lib/transpiler-engine.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
@@ -21,7 +22,8 @@ const files = (dir, rel = '') => readdirSync(join(dir, rel), { withFileTypes: tr
 const CASES = {
   claude: { agy: true, tier: 'TIER_3_AGENT_CONTROL', has: ['hooks.json', 'scripts/hook-shim.mjs', 'rules/AGENTS.md', 'agents/fixture-reviewer.md', 'mcp_config.json'], unported: ['hook:UserPromptSubmit'] },
   gemini: { agy: true, tier: 'TIER_2_LOCAL_TOOLING', has: ['hooks.json', 'rules/AGENTS.md', 'skills/hello/SKILL.md'], unported: ['gemini:excludeTools'] },
-  'claude-mod': { agy: true, tier: 'TIER_1_TELEMETRY', files: ['plugin.json'], unported: ['ui-mod:hooks/register.tsx'] },
+  'claude-mod': { agy: true, esbuild: true, tier: 'TIER_3_AGENT_CONTROL', has: ['hooks.json', 'sidecars/pane/sidecar.json', 'sidecars/pane/mod/hooks/register.mjs'], unported: [] },
+  'claude-mod-transcript': { agy: true, tier: 'TIER_1_TELEMETRY', files: ['plugin.json'], unported: ['ui-mod:hooks/register.js'] },
   cursor: { tier: 'TIER_1_TELEMETRY', files: ['plugin.json', 'rules/always-style.md', 'rules/api-design.md', 'rules/cursorrules.md', 'skills/manual-only/SKILL.md', 'skills/react-components/SKILL.md'], unported: [] },
   roo: { tier: 'TIER_3_AGENT_CONTROL', files: ['agents/fixture-architect.md', 'agents/fixture-orchestrator.md', 'plugin.json', 'rules/roo-rules-style.md'], unported: ['mode:fixture-architect group edit (\\.md$)'] },
   codex: { tier: 'TIER_1_TELEMETRY', files: ['plugin.json', 'rules/AGENTS.md', 'skills/codex-skill/SKILL.md'], unported: [] },
@@ -29,7 +31,8 @@ const CASES = {
 };
 
 for (const [name, expected] of Object.entries(CASES)) {
-  test(`fixture ${name}: ports and passes agy plugin validate`, { skip: expected.agy && !hasAgy && 'agy not on PATH' }, () => {
+  const skip = (expected.agy && !hasAgy && 'agy not on PATH') || (expected.esbuild && !loadEsbuild() && 'esbuild not installed');
+  test(`fixture ${name}: ports and passes agy plugin validate`, { skip }, () => {
     const outDir = out();
     const report = transpile({ srcDir: fixture(name), outDir, validate: hasAgy });
     assert.equal(report.tier, expected.tier);

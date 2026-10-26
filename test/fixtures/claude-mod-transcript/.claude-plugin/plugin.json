@@ -1,0 +1,5 @@
+{
+  "name": "fixture-claude-mod-transcript",
+  "version": "0.1.0",
+  "description": "Negative UI-mod fixture: it only draws into a transcript render site, so the porter must refuse it."
+}

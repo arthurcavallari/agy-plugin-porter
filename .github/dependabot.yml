@@ -1,6 +1,10 @@
 version: 2
 updates:
-  # The package has no npm dependencies; keep the workflow actions current
+  # The package has no runtime dependencies, only esbuild as an optional one
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
   - package-ecosystem: github-actions
     directory: /
     schedule:

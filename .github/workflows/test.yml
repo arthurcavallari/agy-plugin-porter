@@ -29,6 +29,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
+      # esbuild is optional; installing it covers the TS/TSX UI-mod paths too
+      - run: npm install --no-audit --no-fund --no-package-lock
       - run: npm test
 
   package:
