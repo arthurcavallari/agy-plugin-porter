@@ -5,7 +5,7 @@
 //   node spike/build.mjs [--transform esbuild|node] [--esbuild <path to esbuild package>] [mod...]
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import module from 'node:module';
-import { basename, dirname, extname, join } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { transform as jsx } from './jsx.mjs';
 
