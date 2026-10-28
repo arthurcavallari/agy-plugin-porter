@@ -30,7 +30,7 @@ try {
   const installed = join(app, 'node_modules', pkg.name);
   assert.equal(existsSync(join(installed, 'test')), false, 'test/ must not be published');
   assert.equal(existsSync(join(installed, 'docs')), false, 'docs/ must not be published');
-  for (const rel of ['LICENSE', 'README.md', 'scripts/hook-shim.mjs']) {
+  for (const rel of ['LICENSE', 'README.md', 'scripts/hook-shim.mjs', 'scripts/mod-runtime/server.mjs', 'scripts/mod-runtime/ui.html']) {
     assert.equal(existsSync(join(installed, rel)), true, `${rel} must be published`);
   }
   assert.equal(existsSync(join(installed, 'scripts/pack-smoke.mjs')), false, 'pack-smoke.mjs must not be published');
