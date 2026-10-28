@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // agy-porter --source <path|owner/repo@ref> [--path <dir>] [--slug <s>] [--out <dir>]
 //            [--force] [--validate] [--install] [--json]
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { portPackage } from '../lib/index.mjs';
+import { spawnAgy } from '../lib/transpiler-engine.mjs';
 
 const USAGE = `Usage: agy-porter --source <path|owner/repo@ref> [options]
 
@@ -75,7 +75,7 @@ async function main() {
     }
     if (report.validation && !report.validation.ok) return 2;
     if (opts.install) {
-      const run = spawnSync(opts.agy ?? 'agy', ['plugin', 'install', outDir], { stdio: 'inherit' });
+      const run = spawnAgy(opts.agy ?? 'agy', ['plugin', 'install', outDir], { stdio: 'inherit' });
       if (run.status !== 0) return run.status ?? 1;
       console.log('Installed. Restart Antigravity to load a new plugin directory.');
     }
