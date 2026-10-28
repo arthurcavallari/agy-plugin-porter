@@ -2,7 +2,9 @@
 // sidecar on an ephemeral port with a temp data dir, and plays agy's side (hook
 // payloads, MCP calls, the view's SSE stream and clicks).
 import { spawn } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -41,14 +43,26 @@ export function stageSource(mod) {
   return src;
 }
 
-// Starts sidecars/<id>/server.mjs. Returns {child, data, info, call, close}.
+// A free loopback port, as the app picks one for ANTIGRAVITY_SIDECAR_WEB_PORT.
+const freePort = () => new Promise((resolve, reject) => {
+  const srv = createServer().once('error', reject).listen(0, '127.0.0.1', () => {
+    const { port } = srv.address();
+    srv.close(() => resolve(port));
+  });
+});
+
+// Starts sidecars/<id>/server.mjs with a port and UI token chosen here, as the app does,
+// and waits for its server_info.json. Returns {child, data, info, call, close}.
 export async function startSidecar(pluginDir, id = 'pane') {
   const data = tempDir('porter-mod-data-');
-  const env = { ...process.env, ANTIGRAVITY_EXECUTABLE_DATA_DIR: data, ANTIGRAVITY_LS_ADDRESS: '', ANTIGRAVITY_SIDECAR_UI_TOKEN: '' };
+  const info = { port: await freePort(), token: randomBytes(24).toString('hex') };
+  const env = {
+    ...process.env, ANTIGRAVITY_EXECUTABLE_DATA_DIR: data, ANTIGRAVITY_LS_ADDRESS: '',
+    ANTIGRAVITY_SIDECAR_WEB_PORT: String(info.port), ANTIGRAVITY_SIDECAR_UI_TOKEN: info.token,
+  };
   const child = spawn(process.execPath, [join(pluginDir, 'sidecars', id, 'server.mjs')], { env, stdio: 'ignore' });
   for (let i = 0; i < 100; i++) {
-    try {
-      const info = JSON.parse(readFileSync(join(data, 'server_info.json'), 'utf8'));
+    if (existsSync(join(data, 'server_info.json'))) {
       const call = async (path, body) => {
         const res = await fetch(`http://127.0.0.1:${info.port}${path}`, {
           method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', 'X-Sidecar-Token': info.token },
@@ -57,7 +71,8 @@ export async function startSidecar(pluginDir, id = 'pane') {
         return res.json();
       };
       return { child, data, env, info, call, pluginDir, id, close: () => child.kill() };
-    } catch { await wait(50); }
+    }
+    await wait(50);
   }
   child.kill();
   throw new Error('the sidecar did not start');
