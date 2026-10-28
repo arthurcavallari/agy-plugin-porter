@@ -267,3 +267,69 @@ The three plugins were switched off, uninstalled with `agy plugin uninstall` (cl
 - conversation summaries, app state, the Hangar and Context Monitor data, crash logs, a marketplace cache refresh, an `android-cli-plugin` update, and Chromium caches under `%APPDATA%\Antigravity`
 
 **Old conversations pruned again.** The profile held 508 conversations before the run. Adding the 4 test conversations removed the 12 oldest (last written 2026-09-29), which leaves exactly 500. That matches step 0's inference that the app keeps the newest 500. The 12 are intact in the backup.
+
+## Phase 2.5B: the porter's own output
+
+**Verdict: the compiler and runtime reproduce the spike, and fix its two placement and context gaps.** The three stage mods and the fixture were ported by `agy-porter`, not by hand. The 2.5A rows exercised again held, the fixture's `deny` ran live for the first time, and live testing found and fixed one bug in the compiler.
+
+**Run.** 2026-10-28 (UTC), Antigravity desktop 2.27.0, `agy` CLI 1.4.5, Windows 11. Sidecars, hooks and MCP servers ran on the app's bundled Node, v24.21.0. All times below are UTC, from `runtime.log`.
+
+**Environment.** The real profile, with the same safeguards as 2.5A. With the app closed, both folders were copied to `backups\mods2.5b-20261028-2312` and hashed. Every file matched except the `cli.log` symlink. Installs went through `agy plugin install`/`uninstall`. The edits ran in a throwaway workspace, `C:\Users\arthu\mods-scratch`.
+
+**What was built.** Each plugin is the porter's output for an upstream source, at the commits pinned in `spike/mods/*/port.json`:
+
+| Plugin | Command | Verdict | Mod tier (`mod.json`) | Plugin tier | Validate (`--strict --json`) |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| `porter-test-task-board` | `agy-porter --source <task-board repo> --path mods/task-board` | clean | Tier 2 | Tier 2 | `sidecars 1, mcpServers 1, hooks 1, skills 1` |
+| `porter-test-replay-theater` | `… --path mods/replay-theater` | clean | Tier 2 | Tier 3: its Stop hook | same |
+| `porter-test-side-pane` | `… --path plugins/side-pane` | partial | Tier 3: `$.prompt.fill` | Tier 3 | same |
+| `porter-test-fixture-mod` | `--source test/fixtures/claude-mod` | clean | Tier 3: `tool.call` can deny | Tier 3 | same |
+
+`--strict` passes once `%APPDATA%\Antigravity\bin` is on PATH, as in 2.5A. The plugin tier is the static auditor's, which treats any Stop hook as "a hook can keep the agent running". A mod's Stop forwarder only ever answers `{}`, so this overstates replay-theater by one tier.
+
+### Checks
+
+| Check | Result | Evidence | Label |
+| :-- | :-- | :-- | :-- |
+| Panes, elements and `$` nouns from the 2.5A scorecard | **The rows exercised again hold.** task-board toggled and added tasks. replay-theater stepped through a two-edit turn (Step 1/2, **Next** to 2/2, **Prev** back). The agent called side-pane's `update` when asked for options. Copy, quote, hotkeys and toasts weren't rechecked. | Screenshots, `store.json`, `runtime.log` | live |
+| `tool.call` `{ deny }` | **works.** `echo porter-fixture-deny` was refused with "tool call denied by pre-tool hook: fixture-claude-mod: blocked by fixture policy", and the agent reported it. | Transcript step 35; `runtime.log` `path: deny` at 13:28:36 | live |
+| Pause and resume by `stepIdx` | **works.** Every `write_file` and `run_command` PreToolUse resumed at its PostToolUse by `stepIdx` (13, 15, 17, 56, 74, 88, 90). | `runtime.log` `resumed (stepIdx)` | live |
+| `prompt.context` once per turn | **works after a fix.** One "Hook Json PreInvocation" per turn, on the turn's first model call only, across 6 turns. | `runtime.log` 13:52–13:57; transcript | live |
+| Placement counts only visible views | **works.** With the task-board tab showing, task-board reported 1 view and 1 visible. side-pane, replay-theater and the fixture each had 2 views (their tab plus Hangar's copy) and 0 visible. | `/api/debug` | live |
+| Commands: skill and toolbar | **works.** `/task-board Buy milk` and `/side-pane` ran through the generated skill, and the reply carried the `sidecar://` link. The toolbar's **Arguments** field, with `/task-board [entry]` as its help text, added a third task. | Transcript, `store.json` | live |
+| Hooks fail open with the sidecar down | **Not reproduced live.** The app restarted a stopped sidecar within about 1 s, too fast to send a hook through the gap. Covered offline: `hook.mjs` answers no opinion after its 2 s timeout and always exits 0. 2.5A showed the same behavior live. | `test/mod-runtime.test.mjs` | static (offline-tested) |
+
+### Other findings
+
+| Finding | Evidence | Label |
+| :-- | :-- | :-- |
+| **A per-turn mod needs a Stop hook.** side-pane uses only `prompt.context`, so the first build emitted PreInvocation without Stop. The runtime never saw a turn end and injected its `systemMessage` on the first turn only. Without the nudge, the agent never called `update`. Fixed: the compiler emits Stop whenever it emits PreInvocation. After a reinstall, the nudge reached every turn and the agent called `update` when asked for options. | `runtime.log` 13:20–13:28 (before), 13:52–13:57 (after) | live |
+| **The app restarts a killed sidecar in about 1 s.** With `restart_policy: always`, the new process wrote its own `server_info.json` (new pid and port) and the open views reconnected. | `runtime.log` 13:59:48 | live |
+| **Switching a plugin off kills its sidecar without a signal.** None of the four logged a clean stop, and each left `server_info.json` behind. Callers re-read the file on every call and fail open, so a stale file is harmless. | `runtime.log`, leftover files | live |
+| **A reinstall is picked up live, again.** With side-pane switched off, `agy plugin uninstall` then `install` started the new build (pid 48084) with no app restart. | `runtime.log` 13:51:02 | live |
+| **The model reads the skill and tool files before calling.** Each command cost 2–3 `read_file` steps before the `slash_*` call. | Transcript | live |
+| **Hook round trips stay cheap:** 0–1 ms in the sidecar. | `runtime.log` `ms` | live |
+
+### Reproduce
+
+1. Close the app and back up both folders (see step 0).
+2. `npm install` (for `esbuild`), then for each stage mod: `agy-porter --source <repo>@<sha> --path <dir> --slug porter-test-<mod> --out <dir> --validate`, and `agy plugin install <dir>`. Or run the opt-in end-to-end test: `PORTER_E2E=1 npm test`.
+3. In a throwaway workspace:
+   - run `/task-board <task>`
+   - ask for two file edits in one turn, then run `/replay`
+   - ask the agent for options
+   - ask it to run `echo porter-fixture-deny`
+4. Read `~/.gemini/antigravity/sidecar_data/porter-test-*/pane/data/runtime.log`. `GET /api/debug` (with the `server_info.json` token) shows views and visible views per conversation.
+5. To uninstall, switch each plugin off in **Customizations > Plugins** first, then `agy plugin uninstall porter-test-<mod>`.
+
+### Cleanup
+
+The four plugins were switched off and uninstalled with `agy plugin uninstall` (clean). Their `sidecar_data`, MCP tool cache (`antigravity/mcp/porter-test-*`) and empty `plugin_data/porter-test-*` folders were deleted. With the app closed and the researcher's approval, the `porter-test` entries were also removed from `config.json`, `hangar.json` and the four `config/projects/` files, after copying them to the backup. Both folders were then hashed again and compared with the pre-install manifest.
+
+**Left behind:** nothing from the test plugins.
+
+**Expected churn from using the app:**
+- the test conversation (`brain/`, `conversations/`, `annotations/`, `presence/`) and the `mods-scratch` project
+- conversation summaries, app state, the Hangar, Context Monitor, docker-ops and Android CLI sidecar data, crash logs, and Chromium caches under `%APPDATA%\Antigravity`
+
+**Old conversations pruned again.** The profile held 503 conversations before the run. The app removed the 3 oldest (last written 2026-09-29), and the test conversation brought the count to 501. So the prune to 500 runs before a new conversation is added. The 3 are intact in the backup.

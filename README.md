@@ -4,9 +4,9 @@
 
 `agy plugin install` already stages Claude Code and Gemini CLI plugins, but much of what it stages never runs. Hooks keep their foreign shape, `${CLAUDE_PLUGIN_ROOT}` stays unexpanded, and Claude agents are skipped by the loader. `CLAUDE.md` is never loaded either. agy still reports success. Cursor, Roo/Kilo and Codex sources aren't detected at all.
 
-`agy-plugin-porter` fills those gaps and audits the result. It's zero-dependency, pure Node.js (`>= 20.0.0`) ESM, and it's built to be the porting engine for [**Antigravity Hangar**](https://github.com/arthurcavallari/antigravity-hangar)'s plugin installs. That integration is planned and not built yet.
+`agy-plugin-porter` fills those gaps and audits the result. It's zero-dependency (`esbuild` is optional, for TS/TSX UI mods), pure Node.js (`>= 20.0.0`) ESM, and it's built to be the porting engine for [**Antigravity Hangar**](https://github.com/arthurcavallari/antigravity-hangar)'s plugin installs. That integration is planned and not built yet.
 
-**Status: 0.x.** Phases 0–2 of [`docs/plan.md`](docs/plan.md) are done. What agy itself handles was measured against agy 1.4.5 and is recorded in [`docs/agy-baseline.md`](docs/agy-baseline.md).
+**Status: 0.x.** Phases 0–2 of [`docs/plan.md`](docs/plan.md) are done, plus Phase 2.5 (Claude Code UI mods, [`docs/phase-2.5-ui-mods-plan.md`](docs/phase-2.5-ui-mods-plan.md)). What agy itself handles was measured against agy 1.4.5 and is recorded in [`docs/agy-baseline.md`](docs/agy-baseline.md).
 
 ---
 
@@ -51,7 +51,7 @@ Nothing is dropped silently.
 | Cursor `.mdc` | Always-on rules, `model_decision` rules, or skills (glob-scoped and manual rules) |
 | `.cursorrules`, Roo/Cline/Kilo rules | Always-on rules |
 | Codex `.agents/skills` | Skills |
-| Claude Code UI mods (`hooks.json` with `modules`) | Detected and reported as unported. Nothing is copied or run. |
+| Claude Code UI mods (`hooks.json` with `modules`) | A plugin sidecar per mod, with its pane in Antigravity's side panel. See [UI mods](#ui-mods). |
 
 ### The hook shim
 
@@ -64,6 +64,20 @@ agy's hook contract differs from Claude Code's and Gemini CLI's: camelCase paylo
   - other failures → allow plus a warning, matching the source's non-blocking semantics
 
 The original commands live in `scripts/hook-shim.json`, so they never pass through agy's command line, which mangles quoted paths on Windows.
+
+### UI mods
+
+A Claude Code UI mod is a JS/TS module whose `register(on)` draws panes and hooks into the agent loop. The porter compiles each one into a plugin sidecar:
+- **Pane:** the mod's `Pane` renders in a view in Antigravity's side panel. Open it from the `sidecar://` link a command's reply carries, or from its tab.
+- **Events:** `session.start`, `turn.start`, `turn.complete` and `tool.call` run from agy hooks forwarded to the sidecar. A `tool.call` handler can observe and deny built-in tool calls (live-tested). It can also rewrite their input, which is implemented but not yet live-tested.
+- **Commands and tools:** each `$.command.register` becomes a skill plus a button in the view's toolbar. Each `$.tool.register` becomes an MCP tool.
+- **Report:** a mod is ported clean, partially (each fallback listed), or refused (for example, a mod that only draws into the transcript). A static scan lists every `$` call, and the runtime exposes only those.
+
+What maps fully, partially and not at all, tested live against three real mods, is in [`docs/ui-mods-baseline.md`](docs/ui-mods-baseline.md).
+
+TS/TSX mods need [`esbuild`](https://esbuild.github.io/), an optional dependency installed with the porter. Without it, those mods are reported unported. Plain JS mods need nothing. A ported mod is a full Node process outside agy's permission prompts, so it's always at least Tier 2.
+
+**Uninstalling:** switch the plugin off in **Customizations > Plugins** before `agy plugin uninstall`. On Windows a running sidecar holds its folder open, and the uninstall fails halfway.
 
 ### Static audit
 
@@ -85,7 +99,7 @@ const { report, tier } = await portPackage({
 });
 ```
 
-Subpath exports cover the individual stages: `./detector`, `./hook-compiler`, `./manifest-sanitizer`, `./skill-compiler`, `./rules-compiler`, `./mode-compiler`, `./static-auditor` and `./transpiler-engine`.
+Subpath exports cover the individual stages: `./detector`, `./hook-compiler`, `./manifest-sanitizer`, `./mod-compiler`, `./skill-compiler`, `./rules-compiler`, `./mode-compiler`, `./static-auditor` and `./transpiler-engine`.
 
 ## Development
 
