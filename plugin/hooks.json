@@ -1,0 +1,11 @@
+{
+  "agy-plugin-porter": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "agy-node scripts/session-start.mjs",
+        "timeout": 10
+      }
+    ]
+  }
+}

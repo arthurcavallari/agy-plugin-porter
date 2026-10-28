@@ -1,0 +1,30 @@
+:root { --bg: #fafafa; --fg: #1f1f1f; --dim: #6b6b6b; --line: rgba(127,127,127,.25); --accent: #0b6bcb;
+  --ok: #15803d; --bad: #b91c1c; --warn: #a16207; --field: #fff; }
+:root[data-theme="dark"] { --bg: #181818; --fg: #e6e6e6; --dim: #9a9a9a; --accent: #4ea1ff;
+  --ok: #4ade80; --bad: #f87171; --warn: #facc15; --field: #222; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #181818; --fg: #e6e6e6; --dim: #9a9a9a;
+  --accent: #4ea1ff; --ok: #4ade80; --bad: #f87171; --warn: #facc15; --field: #222; } }
+body { font: 13px/1.45 system-ui, sans-serif; margin: 0; padding: 12px; background: var(--bg); color: var(--fg); }
+h1 { font-size: 15px; margin: 0; }
+h2 { font-size: 13px; margin: 14px 0 6px; }
+.dim, .help { color: var(--dim); }
+.help { font-size: 11px; margin: 2px 0 8px; }
+label { display: block; font-weight: 600; margin-top: 6px; }
+input { width: 100%; box-sizing: border-box; padding: 5px 7px; background: var(--field); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > div { flex: 1 1 140px; min-width: 0; }
+.row.end { justify-content: flex-end; }
+button { padding: 5px 12px; border: 0; border-radius: 4px; background: var(--accent); color: #fff; font: inherit; cursor: pointer; }
+button.secondary { background: none; color: var(--fg); border: 1px solid var(--line); }
+button:disabled { opacity: .5; cursor: default; }
+#status { min-height: 1.4em; color: var(--dim); }
+#status.error { color: var(--bad); }
+#report { border-top: 1px solid var(--line); margin-top: 8px; }
+.tier { font-weight: 600; }
+.ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+ul { margin: 4px 0; padding-left: 18px; }
+li { overflow-wrap: anywhere; }
+#recent li button { background: none; color: var(--accent); padding: 0; }
+dialog { background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; max-width: 420px; }
+dialog::backdrop { background: rgba(0,0,0,.4); }

@@ -155,3 +155,12 @@ jobs:
           if ! gh release view "${tag}" >/dev/null 2>&1; then
             gh release create "${tag}" --title "${tag}" --generate-notes --verify-tag
           fi
+      - name: Attach the porter's Antigravity plugin to the release (tag push)
+        if: env.IS_DISPATCH != 'true'
+        # The registry installs the plugin from this tarball, pinned by its sha256
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          npm run build:plugin
+          gh release upload "v${version}" \
+            "dist/plugin/agy-plugin-porter-plugin-${version}.tgz" \
+            "dist/plugin/agy-plugin-porter-plugin-${version}.tgz.sha256" --clobber
