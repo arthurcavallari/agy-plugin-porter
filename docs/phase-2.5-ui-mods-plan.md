@@ -145,9 +145,9 @@ Hand-port three real mods into plugins with `sidecars/<id>/`, using the runtime 
 
 | Piece | Runs as | Role |
 | :-- | :-- | :-- |
-| `sidecars/<id>/dist/server.mjs` | The sidecar (`node`) | Loads the transpiled mod and calls `register(on)` against the stand-in `$`. Serves `/ui.html`, SSE, UI actions, `/mcp` and `/api/hook`. Writes `server_info.json` like `science`. |
-| `sidecars/<id>/dist/mcp-entry.mjs` | MCP server from `mcp_config.json` | Exposes `$.tool.register` tools. Forwards calls to `server.mjs /mcp`, or applies them offline. |
-| `scripts/hook-shim.mjs` (extended) | agy hooks | For mod events, finds `server_info.json` (2.2) and POSTs the event to `/api/hook`. Unchanged for classic hooks. |
+| `sidecars/<id>/server.mjs` | The sidecar (`agy-node`) | Loads the transpiled mod and calls `register(on)` against the stand-in `$`. Serves `/ui.html`, SSE, UI actions, `/mcp` and `/api/hook`. Writes `server_info.json` like `science`. |
+| `sidecars/<id>/mcp-entry.mjs` | MCP server from `mcp_config.json` | Exposes `$.tool.register` tools and one `slash_<command>` tool per command. Forwards calls to `server.mjs /api/mcp`. With the sidecar down, it lists the scanned tools and fails calls with a clear error. |
+| `sidecars/<id>/hook.mjs` | agy hooks (`agy-node`) | Finds `server_info.json` (2.2) and POSTs the event to `/api/hook`. A separate forwarder, not an extended `hook-shim.mjs`: it's the path 2.5A proved live, classic ports keep a shim with no mod code, and the data-dir search would push the shim past 300 lines. |
 
 ### 5.2 `tool.call` is middleware, so pause and resume
 
@@ -183,7 +183,7 @@ Mod-implemented tools (requirement 6) skip this: the MCP path calls the handler 
 | `turn.complete` / `classic.Stop` | `Stop` | |
 | `tool.call` (built-in tools) | `PreToolUse` + `PostToolUse` | Pause and resume, 5.2. Matchers come from [`lib/tool-map.mjs`](../lib/tool-map.mjs). |
 | `tool.call` (own `mcp__*` tools) | MCP `tools/call` | Requirement 6 |
-| `prompt.context` | `PreInvocation` `injectSteps` (`ephemeralMessage`) | Partial: added text only |
+| `prompt.context` | The turn's first `PreInvocation`, `injectSteps` `systemMessage` | Partial: visible in the transcript, once per turn. `systemMessage` is the only step type proven live; an unknown type ends the agent turn. Needs a `Stop` hook to see turns end (live, 2.5B). |
 | `tool.describe` | Tool description at registration | Static |
 | `command.run` | Generated skill + pane toolbar button | Partial: agy skills can't run code |
 | `prompt.submit`, `prompt.compose` | None | Reported, as in plan.md |
@@ -228,16 +228,22 @@ Hand-written TypeScript stripping with regexes is ruled out. The spike transform
 
 ## 6. Phase 2.5B: compiler and runtime
 
-Only after the scorecard review. Files stay ≤ 300 lines, and the porter keeps zero runtime dependencies (5.8 aside).
+Built; live results in [`ui-mods-baseline.md`](ui-mods-baseline.md#phase-25b-the-porters-own-output). Files stay ≤ 300 lines, and the porter keeps zero runtime dependencies (`esbuild` aside, 5.8).
 
 ```
-lib/mod-compiler.mjs        # static scan (events, $ calls, render sites), portability verdict,
-                            # emits sidecars/<id>/, mcp_config.json entry, skills, hooks.json entries
-lib/jsx-transform.mjs       # per 5.8
-scripts/hook-shim.mjs       # + mod-event forwarding to /api/hook
-scripts/mod-runtime/        # copied into sidecars/<id>/dist/
-  server.mjs  mcp-entry.mjs  engine.mjs  ui-html.mjs  ui.html
+lib/mod-lexer.mjs           # blanks comments, strings and regexes, keeping offsets
+lib/mod-scan.mjs            # static scan (events, $ calls, commands, tools, render sites, imports),
+                            # verdict (clean / partial / refused) and tier
+lib/mod-transform.mjs       # optional esbuild: TS/TSX/JSX -> .mjs, import graph, 'claude-code' rewrite
+lib/mod-compiler.mjs        # emits sidecars/<id>/, mod.json, mcp_config.json entry, skills, hooks.json entries
+scripts/mod-runtime/        # copied flat into sidecars/<id>/, the mod into sidecars/<id>/mod/
+  server.mjs  lifecycle.mjs  locate.mjs  engine.mjs  instance.mjs  elements.mjs  tool-calls.mjs
+  claude-code.mjs  mcp-entry.mjs  hook.mjs  ui.html  ui.js  ui-draw.js
 ```
+
+- **One sidecar per mod:** `pane` for a single module, `pane-<stem>` when a source lists several.
+- **Visibility:** the view reports `document.visibilityState` plus a plain `IntersectionObserver` (`isIntersecting`). Only visible views count for `isPlaced`/`isShown`.
+- **`$` allowlist:** the scan writes `mod.json`. A `$` call outside it throws. A scanned call the runtime doesn't implement rejects with "not available in the Antigravity port".
 
 **Tests:**
 - **Fixture:** `test/fixtures/claude-mod/` (one pane, one `tool.call` guard, one status line) compiles into a plugin that passes `agy plugin validate --strict` with `sidecars: 1`.
@@ -260,6 +266,6 @@ scripts/mod-runtime/        # copied into sidecars/<id>/dist/
 
 - Step 0 questions 1–8.
 - Which `next()` result fields real mods read (5.2).
-- Whether agy's `overwrite` works as documented, live.
-- One sidecar per mod, or one host sidecar with a view per mod, when a repo ships several mods.
+- Whether agy's `overwrite` works as documented, live. `deny` is live (2.5B); none of the stage mods rewrites input.
+- ~~One sidecar per mod, or one host sidecar per repo~~: one sidecar per mod (2.5B).
 - How fast Claude Code's mod API changes: pin the mod types version the runtime targets (`mods/types/claude-code.d.ts` in `anthropics/claude-code`).
