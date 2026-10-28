@@ -99,7 +99,7 @@ test('commands and tools: an MCP server named after the source, one skill per co
 test('modHooks: unmapped tools are reported, a matcher-less tool.call hooks every tool', () => {
   const scan = { events: [{ event: 'tool.call', matcher: { tool: 'TodoWrite' } }, { event: 'turn.start', matcher: {} }] };
   assert.deepEqual(modHooks(scan, 'pane').unmapped, ['TodoWrite']);
-  assert.deepEqual(Object.keys(modHooks(scan, 'pane').events), ['SessionStart', 'PreInvocation']);
+  assert.deepEqual(Object.keys(modHooks(scan, 'pane').events), ['SessionStart', 'PreInvocation', 'Stop']);
   const any = modHooks({ events: [{ event: 'tool.call', matcher: {} }] }, 'pane').events;
   assert.equal(any.PreToolUse[0].matcher, '*');
 });
