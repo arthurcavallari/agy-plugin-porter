@@ -24,6 +24,10 @@ test('lexer: comments, strings, templates and regexes are blanked, offsets kept'
 test('imports: runtime ones only, type-only ones dropped', () => {
   const src = "import { a } from './a.js'\nimport type { B } from 'claude-code'\nimport { atom } from 'claude-code'\nexport { c } from \"../c\"\nconst d = await import('./d.mjs')\n// import x from 'nope'";
   assert.deepEqual(importsOf(src), ['./a.js', 'claude-code', '../c', './d.mjs']);
+  assert.deepEqual(importsOf("import './side'\nimport * as ns from './ns'\nexport * from './all'\nexport const e = 'not an import'"), ['./side', './ns', './all']);
+  const started = performance.now();
+  importsOf(`import${'\t'.repeat(50_000)}x`);
+  assert.ok(performance.now() - started < 1000, 'linear on long whitespace runs');
 });
 
 test('fixture: pane, a Bash guard that denies, a status line; tier 3, clean', () => {
