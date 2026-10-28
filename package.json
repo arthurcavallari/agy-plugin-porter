@@ -51,6 +51,7 @@
   ],
   "exports": {
     ".": "./lib/index.mjs",
+    "./consent": "./lib/consent.mjs",
     "./detector": "./lib/detector.mjs",
     "./hook-compiler": "./lib/hook-compiler.mjs",
     "./manifest-sanitizer": "./lib/manifest-sanitizer.mjs",
@@ -63,7 +64,8 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "test": "node --test test/yaml-lite.test.mjs test/detector.test.mjs test/hook-compiler.test.mjs test/hook-shim.test.mjs test/compilers.test.mjs test/transpiler.test.mjs test/mod-scan.test.mjs test/mod-compiler.test.mjs test/mod-continuation.test.mjs test/mod-runtime.test.mjs test/mod-stage.test.mjs test/mod-e2e.test.mjs",
-    "test:pack": "node scripts/pack-smoke.mjs"
+    "test": "node --test test/yaml-lite.test.mjs test/detector.test.mjs test/hook-compiler.test.mjs test/hook-shim.test.mjs test/compilers.test.mjs test/transpiler.test.mjs test/mod-scan.test.mjs test/mod-compiler.test.mjs test/mod-continuation.test.mjs test/mod-runtime.test.mjs test/mod-stage.test.mjs test/mod-e2e.test.mjs test/consent.test.mjs test/session-start.test.mjs test/plugin-build.test.mjs test/plugin-mcp.test.mjs test/cockpit.test.mjs",
+    "test:pack": "node scripts/pack-smoke.mjs",
+    "build:plugin": "node scripts/build-plugin.mjs"
   }
 }

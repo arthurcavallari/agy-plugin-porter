@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plugin Porter</title>
+<!-- Loaded first, so the host's one-shot theme-change isn't missed (as in the mod runtime). -->
+<script src="/preload.js"></script>
+<link rel="stylesheet" href="/ui.css">
+</head>
+<body>
+<header>
+  <h1>Plugin Porter</h1>
+  <p class="dim">Port a Claude Code, Gemini CLI, Cursor, Roo/Kilo or Codex plugin into Antigravity.</p>
+</header>
+<form id="form">
+  <label for="source">Source</label>
+  <input id="source" required aria-describedby="source-help" autocomplete="off" spellcheck="false">
+  <p id="source-help" class="help">A folder path, or a GitHub repo as owner/repo@tag. Pin a tag or commit.</p>
+  <div class="row">
+    <div>
+      <label for="path">Path</label>
+      <input id="path" aria-describedby="path-help" autocomplete="off" spellcheck="false">
+      <p id="path-help" class="help">Optional: the subfolder that holds the plugin.</p>
+    </div>
+    <div>
+      <label for="slug">Name</label>
+      <input id="slug" aria-describedby="slug-help" autocomplete="off" spellcheck="false">
+      <p id="slug-help" class="help">Optional: the plugin's name in Antigravity.</p>
+    </div>
+  </div>
+  <button id="preview" type="submit">Preview</button>
+</form>
+<p id="status" role="status" aria-live="polite"></p>
+<section id="report" hidden></section>
+<section id="recent-wrap" hidden>
+  <h2>Recent previews</h2>
+  <ul id="recent"></ul>
+</section>
+<dialog id="confirm" aria-labelledby="confirm-title">
+  <h2 id="confirm-title"></h2>
+  <p id="confirm-body"></p>
+  <div class="row end">
+    <button id="cancel" type="button" class="secondary">Cancel</button>
+    <button id="ok" type="button">Install</button>
+  </div>
+</dialog>
+<script src="/ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "agy-plugin-porter",
+  "displayName": "Plugin Porter",
+  "description": "Ports Claude Code, Gemini CLI, Cursor, Roo/Kilo and Codex plugins to native Antigravity plugins, with a port report, a security audit and a consent step before anything is installed.",
+  "version": "0.0.0",
+  "suggestedPrompts": [
+    "Port the plugin in this workspace to Antigravity",
+    "Preview a port of owner/repo@tag and show me what won't carry over",
+    "Open the Plugin Porter cockpit"
+  ]
+}
