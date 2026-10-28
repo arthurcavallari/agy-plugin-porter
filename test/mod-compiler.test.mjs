@@ -49,7 +49,7 @@ test('negative fixture: a transcript-only mod is refused and nothing is emitted'
 
 test('without esbuild a TSX mod stays unported', () => {
   const { pluginDir, report } = compileSource(fixture('claude-mod'), { esbuild: null });
-  assert.deepEqual(report.unported, [{ item: 'ui-mod:hooks/register.tsx', reason: 'needs esbuild to transform TS/TSX (npm i esbuild next to agy-plugin-porter)' }]);
+  assert.deepEqual(report.unported, [{ item: 'ui-mod:hooks/register.tsx', reason: 'needs esbuild to transform TS/TSX: port it with `npx agy-plugin-porter`, which installs esbuild as an optional dependency' }]);
   assert.equal(existsSync(join(pluginDir, 'sidecars')), false);
 });
 
