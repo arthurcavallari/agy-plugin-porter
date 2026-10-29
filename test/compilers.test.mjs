@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -9,7 +9,7 @@ import { buildManifest, fixMcpServers, sanitizeManifest } from '../lib/manifest-
 import { compileModes, mapClaudeModel, mapClaudeTools, mapRooGroups } from '../lib/mode-compiler.mjs';
 import { compileRules, cursorTrigger } from '../lib/rules-compiler.mjs';
 import { compileSkills, slugifyName } from '../lib/skill-compiler.mjs';
-import { parseSourceSpec, resolveSource } from '../lib/source.mjs';
+import { parseSourceSpec, removeTree, resolveSource } from '../lib/source.mjs';
 import { auditPlugin, auditText, inferTier, looksRandom } from '../lib/static-auditor.mjs';
 import { splitFrontmatter } from '../lib/yaml-lite.mjs';
 
@@ -186,6 +186,16 @@ test('source subPath must stay inside the source', () => {
   assert.equal(resolveSource(root, { subPath: 'inner' }).dir, join(root, 'inner'));
   assert.throws(() => resolveSource(root, { subPath: '..' }), /no folder/);
   assert.throws(() => resolveSource(root, { subPath: `../${root.split(/[\/]/).pop()}-sibling` }), /no folder/);
+});
+
+// A git clone's pack files are read-only, which Node 24's rmSync can't delete on Windows.
+test('removeTree deletes a folder holding read-only files', () => {
+  const root = tmp();
+  write(root, '.git/objects/pack/pack-1.idx', 'x');
+  chmodSync(join(root, '.git/objects/pack/pack-1.idx'), 0o444);
+  removeTree(root);
+  assert.equal(existsSync(root), false);
+  removeTree(root);
 });
 
 test('name helpers stay linear on hostile input', () => {
