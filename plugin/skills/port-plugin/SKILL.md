@@ -1,6 +1,6 @@
 ---
 name: port-plugin
-description: Ports a Claude Code, Gemini CLI, Cursor, Roo/Kilo or Codex plugin into a native Antigravity plugin, shows the port report, and installs it once the user agrees. Use when the user asks to port, convert, import or install a plugin from another tool, or when the workspace holds one.
+description: Ports a Claude Code, Gemini CLI, Cursor, Roo/Kilo or Codex plugin into a native Antigravity plugin, shows the port report, and installs it once the user agrees. Use when the user asks to port, convert, import or install a plugin from another tool. A plugin in the workspace is not a request: mention it and wait.
 ---
 
 # Port a plugin into Antigravity
