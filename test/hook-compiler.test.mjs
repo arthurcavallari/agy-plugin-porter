@@ -76,16 +76,52 @@ test('remapMatcher', () => {
   assert.deepEqual(remapMatcher('Bash'), { matcher: 'run_command', unmapped: [] });
   assert.deepEqual(remapMatcher('Notebook.*'), { matcher: 'notebook_edit', unmapped: [] });
   assert.deepEqual(remapMatcher('TodoWrite|Bash'), { matcher: 'run_command', unmapped: ['TodoWrite'] });
-  assert.deepEqual(remapMatcher('mcp__github__.*'), { matcher: null, unmapped: ['mcp__github__.*'] });
+  assert.deepEqual(remapMatcher('mcp__github__.*'), { matcher: 'call_mcp_tool|mcp_github_.*|mcp_tool', unmapped: [] });
   assert.deepEqual(remapMatcher('run_command|view_file'), { matcher: 'run_command|view_file', unmapped: [] });
   assert.deepEqual(remapMatcher('Bash['), { matcher: null, unmapped: ['Bash['] });
   assert.deepEqual(remapMatcher('run_shell_command', 'gemini'), { matcher: 'run_command', unmapped: [] });
 });
 
+test('remapMatcher maps mcp__* tool matchers to call_mcp_tool|mcp_tool and eager mcp_<server>_<tool> (PORTER-01)', () => {
+  const res = remapMatcher('mcp__zoho__delete_record|Bash', 'claude');
+  assert.equal(res.matcher, 'call_mcp_tool|mcp_tool|mcp_zoho_delete_record|run_command');
+  assert.deepEqual(res.unmapped, []);
+
+  // Anchored MCP regex (e.g. soc/hooks/hooks.json)
+  const anchored = remapMatcher('^mcp__[A-Za-z0-9._-]*[Ee][Xx][Aa][Bb][Ee][Aa][Mm][A-Za-z0-9._-]*__', 'claude');
+  assert.equal(anchored.matcher, 'call_mcp_tool|mcp_[A-Za-z0-9._-]*[Ee][Xx][Aa][Bb][Ee][Aa][Mm][A-Za-z0-9._-]*_.*|mcp_tool');
+  assert.deepEqual(anchored.unmapped, []);
+
+  // Parenthesized alternations mixed with built-in tools in either order
+  const parenFirst = remapMatcher('mcp__zoho__(delete|drop)|Bash', 'claude');
+  assert.equal(parenFirst.matcher, 'call_mcp_tool|mcp_tool|mcp_zoho_(delete|drop)|run_command');
+  assert.deepEqual(parenFirst.unmapped, []);
+
+  const parenSecond = remapMatcher('Bash|mcp__zoho__(delete|drop)', 'claude');
+  assert.equal(parenSecond.matcher, 'call_mcp_tool|mcp_tool|mcp_zoho_(delete|drop)|run_command');
+  assert.deepEqual(parenSecond.unmapped, []);
+
+  // Already-mapped agy MCP tool names
+  assert.deepEqual(remapMatcher('call_mcp_tool|mcp_tool', 'claude'), { matcher: 'call_mcp_tool|mcp_tool', unmapped: [] });
+});
+
+test('compileHooks preserves narrow source matcher in shimConfig and guards prototype event keys', () => {
+  const { shimConfig, report } = compileHooks(claudeSource({
+    PreToolUse: [
+      { matcher: 'mcp__zoho__delete_record', ...cmd('node guard.mjs') },
+      { matcher: '*', ...cmd('node all.mjs') },
+    ],
+    toString: [cmd('node nope.mjs')],
+  }), { slug: 's' });
+  assert.equal(shimConfig.hooks['pretooluse-1'].matcher, 'mcp__zoho__delete_record');
+  assert.equal(shimConfig.hooks['pretooluse-2'].matcher, undefined);
+  assert.deepEqual(items(report.unported), ['hook:toString']);
+});
+
 test('unmappable matchers and events are reported, never dropped', () => {
   const { hooks, report } = compileHooks(claudeSource({
     PreToolUse: [
-      { matcher: 'mcp__github__create_issue', ...cmd('a') },
+      { matcher: 'TaskCreate', ...cmd('a') },
       { matcher: 'Bash|TodoWrite', ...cmd('b') },
     ],
     Notification: [cmd('c')],
@@ -93,7 +129,7 @@ test('unmappable matchers and events are reported, never dropped', () => {
   }), { slug: 's' });
   assert.equal(hooks.s.PreToolUse.length, 1);
   assert.deepEqual(items(report.unported), [
-    'hook:PreToolUse#0 (mcp__github__create_issue) matcher mcp__github__create_issue',
+    'hook:PreToolUse#0 (TaskCreate) matcher TaskCreate',
     'hook:PreToolUse#1 (Bash|TodoWrite) matcher TodoWrite',
     'hook:Notification',
     'hook:SubagentStop',

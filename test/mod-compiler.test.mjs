@@ -103,3 +103,19 @@ test('modHooks: unmapped tools are reported, a matcher-less tool.call hooks ever
   const any = modHooks({ events: [{ event: 'tool.call', matcher: {} }] }, 'pane').events;
   assert.equal(any.PreToolUse[0].matcher, '*');
 });
+
+test('PORTER-06: modHooks compiles external mcp__* tool.call hooks while excluding only the mod own MCP server tools', () => {
+  const scan = {
+    events: [
+      { event: 'tool.call', matcher: { tool: 'mcp__github__create_issue|mcp__my-mod__own_tool' } },
+    ],
+    tools: [{ name: 'own_tool', description: 'Own tool' }],
+  };
+  const { events, unmapped } = modHooks(scan, 'pane', 'my-mod');
+  assert.deepEqual(unmapped, []);
+  assert.equal(events.PreToolUse?.length, 1);
+  assert.equal(events.PreToolUse[0].matcher, 'call_mcp_tool|mcp_github_create_issue|mcp_tool');
+  assert.equal(events.PostToolUse?.length, 1);
+  assert.equal(events.PostToolUse[0].matcher, 'call_mcp_tool|mcp_github_create_issue|mcp_tool');
+});
+

@@ -1,6 +1,7 @@
 // Minimal stdio MCP server with one tool, enough for the host to list it.
 import { createInterface } from 'node:readline';
 
+if (process.env.NODE_TEST_CONTEXT && process.argv.length <= 2) process.exit(0);
 const nameIdx = process.argv.indexOf('--name');
 const name = (nameIdx !== -1 && process.argv[nameIdx + 1]) || 'inline-echo';
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\n');

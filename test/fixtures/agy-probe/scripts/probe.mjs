@@ -5,6 +5,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+if (process.env.NODE_TEST_CONTEXT && process.argv.length <= 2) process.exit(0);
 const mode = process.argv[2] || 'log';
 let stdin = '';
 try { stdin = readFileSync(0, 'utf8'); } catch {}

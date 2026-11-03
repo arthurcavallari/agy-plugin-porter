@@ -1,7 +1,7 @@
 // Hosts a ported Claude Code mod for every Antigravity conversation: one Instance
 // per conversation, agy hook events mapped to the mod's events (plan §5.4), and the
 // MCP side (the mod's $.tool.register tools plus one slash_<name> tool per command).
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { installJsxGlobals } from './elements.mjs';
@@ -20,8 +20,15 @@ export class Engine {
     this.store = {
       data: Object.assign(Object.create(null), data),
       save() {
-        writeFileSync(`${file}.tmp`, JSON.stringify(this.data, null, 2));
-        renameSync(`${file}.tmp`, file);
+        const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+        const payload = JSON.stringify(this.data, null, 2);
+        writeFileSync(tmp, payload);
+        try {
+          renameSync(tmp, file);
+        } catch {
+          try { writeFileSync(file, payload); } catch {}
+          try { rmSync(tmp, { force: true }); } catch {}
+        }
       },
     };
   }

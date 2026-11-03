@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { PLUGIN, callSidecar, findDataDir, logDir, pickEnv, readServerInfo } from './locate.mjs';
 
+if (process.env.NODE_TEST_CONTEXT) process.exit(0);
 const CONVERSATION_META = 'antigravity.google/conversation_id';
 const started = findDataDir();
 

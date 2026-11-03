@@ -11,8 +11,8 @@
 //   the script decided something.
 // - SessionStart / Stop / PostToolUse: stdout must be a JSON object.
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { sep } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { isAbsolute, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // agy tool name -> source tool name and arg renames. Arg names are the agy CLI's
@@ -56,7 +56,35 @@ const renameKeys = (obj, renames) => Object.fromEntries(
   Object.entries(obj ?? {}).map(([k, v]) => [renames[k] ?? k, v]));
 const invert = (renames) => Object.fromEntries(Object.entries(renames).map(([k, v]) => [v, k]));
 
-export function toSourceTool(toolCall, dialect) {
+export function toSourceTool(toolCall, dialect, matcher) {
+  if ((toolCall?.name === 'call_mcp_tool' || toolCall?.name === 'mcp_tool') && toolCall?.args) {
+    const server = toolCall.args.ServerName ?? toolCall.args.server_name ?? '';
+    const tool = toolCall.args.ToolName ?? toolCall.args.tool_name ?? '';
+    const rawArgs = toolCall.args.Arguments ?? toolCall.args.arguments ?? {};
+    return {
+      tool_name: server && tool ? `mcp__${server}__${tool}` : toolCall.name,
+      tool_input: typeof rawArgs === 'string' ? (parseJson(rawArgs.trim()) ?? {}) : (rawArgs ?? {}),
+    };
+  }
+  if (dialect !== 'gemini' && typeof toolCall?.name === 'string' && toolCall.name.startsWith('mcp_') && toolCall.name !== 'mcp_tool') {
+    const rest = toolCall.name.slice(4);
+    if (typeof matcher === 'string') {
+      for (const m of matcher.matchAll(/mcp__([A-Za-z0-9._-]+)__/g)) {
+        const srv = m[1];
+        const normSrv = srv.replace(/-/g, '_');
+        if (rest.startsWith(`${srv}_`)) {
+          return { tool_name: `mcp__${srv}__${rest.slice(srv.length + 1)}`, tool_input: toolCall.args ?? {} };
+        }
+        if (rest.startsWith(`${normSrv}_`)) {
+          return { tool_name: `mcp__${srv}__${rest.slice(normSrv.length + 1)}`, tool_input: toolCall.args ?? {} };
+        }
+      }
+    }
+    const idx = rest.indexOf('_');
+    if (idx > 0) {
+      return { tool_name: `mcp__${rest.slice(0, idx)}__${rest.slice(idx + 1)}`, tool_input: toolCall.args ?? {} };
+    }
+  }
   const [name, renames] = REVERSE[dialect]?.[toolCall?.name] ?? [toolCall?.name ?? '', {}];
   return { tool_name: name, tool_input: renameKeys(toolCall?.args, renames) };
 }
@@ -73,10 +101,10 @@ export function toSourcePayload(entry, payload) {
   else base.permission_mode = 'default';
   switch (entry.event) {
     case 'PreToolUse':
-      return { ...base, ...toSourceTool(payload.toolCall, entry.dialect) };
+      return { ...base, ...toSourceTool(payload.toolCall, entry.dialect, entry.matcher) };
     case 'PostToolUse':
-      if (entry.sourceEvent === 'PostToolUseFailure') return { ...base, ...toSourceTool(payload.toolCall, entry.dialect), error: payload.error ?? '' };
-      return { ...base, ...toSourceTool(payload.toolCall, entry.dialect), tool_response: payload.error ? { error: payload.error } : {} };
+      if (entry.sourceEvent === 'PostToolUseFailure') return { ...base, ...toSourceTool(payload.toolCall, entry.dialect, entry.matcher), error: payload.error ?? '' };
+      return { ...base, ...toSourceTool(payload.toolCall, entry.dialect, entry.matcher), tool_response: payload.error ? { error: payload.error } : {} };
     case 'SessionStart':
       return { ...base, source: 'startup' };
     case 'Stop':
@@ -88,23 +116,89 @@ export function toSourcePayload(entry, payload) {
 
 // Expands the plugin-path variables Claude Code and Gemini CLI provide, so the
 // command works under cmd.exe too. Unknown variables are left to the shell.
-export function expandCommand(command, vars) {
-  const values = { ...vars, '/': sep };
-  return command.replace(/\$\{([A-Za-z_]\w*|\/)\}|\$([A-Za-z_]\w*)/g, (whole, braced, bare) => {
-    const name = braced ?? bare;
-    return Object.hasOwn(values, name) ? values[name] : whole;
+export function expandCommand(command, vars, { posix = false } = {}) {
+  const slash = posix ? '/' : sep;
+  const norm = (v) => (posix && typeof v === 'string' ? v.replace(/\\/g, '/') : v);
+  const values = { ...Object.fromEntries(Object.entries(vars ?? {}).map(([k, v]) => [k, norm(v)])), '/': slash };
+  const VAR_RE = /\$\{([A-Za-z_]\w*|\/)\}|\$([A-Za-z_]\w*)/g;
+  return command.replace(/"[^"]*"|'[^']*'|\S+/g, (token) => {
+    let expandedAny = false;
+    const expanded = token.replace(VAR_RE, (whole, braced, bare) => {
+      const name = braced ?? bare;
+      if (Object.hasOwn(values, name)) {
+        if (name !== '/') expandedAny = true;
+        return values[name];
+      }
+      return whole;
+    });
+    const isQuoted = (token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"));
+    if (expandedAny && !isQuoted && !token.includes('"') && /\s/.test(expanded)) {
+      return `"${expanded}"`;
+    }
+    return expanded;
   });
 }
 
 const NO_OPINION = { PreToolUse: '' };
 export const noOpinion = (event) => NO_OPINION[event] ?? '{}';
 
+function splitTopLevelAlternatives(raw) {
+  const out = [];
+  let bracket = false;
+  let paren = 0;
+  let start = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === '\\') { i++; continue; }
+    if (ch === '[' && !bracket) bracket = true;
+    else if (ch === ']' && bracket) bracket = false;
+    else if (!bracket && ch === '(') paren++;
+    else if (!bracket && ch === ')') paren = Math.max(0, paren - 1);
+    else if (!bracket && paren === 0 && ch === '|') {
+      out.push(raw.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  out.push(raw.slice(start).trim());
+  return out.filter(Boolean);
+}
+
+function matchesSourceMatcher(matcher, toolName, rawToolName) {
+  if (!matcher || matcher === '*' || matcher === '.*') return true;
+  const effectiveRaw = (rawToolName === 'call_mcp_tool' || rawToolName === 'mcp_tool') && toolName !== rawToolName
+    ? ''
+    : (rawToolName ?? '');
+  if (matcher === toolName || (effectiveRaw && matcher === effectiveRaw)) return true;
+  try {
+    for (const alt of splitTopLevelAlternatives(matcher)) {
+      if (alt === '*' || alt === '.*' || alt === toolName || (effectiveRaw && alt === effectiveRaw)) return true;
+      const hasAnchor = /^\(*\^/.test(alt) || /\$\)*$/.test(alt);
+      const isMcpPrefix = /^\^?mcp__.*__$/.test(alt);
+      const re = hasAnchor
+        ? new RegExp(alt)
+        : isMcpPrefix
+          ? new RegExp(`^(?:${alt})`)
+          : new RegExp(`^(?:${alt})$`);
+      if (re.test(toolName) || (effectiveRaw && re.test(effectiveRaw))) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 // agy has one PostToolUse with `error` set when the tool failed (empty on
 // success, live-tested). Claude splits it: PostToolUse runs on success only,
 // PostToolUseFailure on failure only.
 export function shouldRun(entry, payload) {
-  if (entry.event !== 'PostToolUse' || entry.dialect !== 'claude') return true;
-  return Boolean(payload.error) === (entry.sourceEvent === 'PostToolUseFailure');
+  if (entry.event === 'PostToolUse' && entry.dialect === 'claude') {
+    if (Boolean(payload.error) !== (entry.sourceEvent === 'PostToolUseFailure')) return false;
+  }
+  if ((entry.event === 'PreToolUse' || entry.event === 'PostToolUse') && entry.matcher) {
+    const { tool_name } = toSourceTool(payload?.toolCall, entry.dialect, entry.matcher);
+    if (!matchesSourceMatcher(entry.matcher, tool_name, payload?.toolCall?.name)) return false;
+  }
+  return true;
 }
 
 function parseJson(text) {
@@ -132,10 +226,10 @@ export function translateResult(entry, result) {
     const reasonOr = (r, fallback) => (typeof r === 'string' && r.trim() ? r.trim() : fallback);
     if (blocked) return { stdout: JSON.stringify({ decision: 'deny', reason: reasonOr(stderr, 'Blocked by hook') }) };
     if (!json) return { stdout: '' };
-    let decision = ['allow', 'deny', 'ask'].includes(specific.permissionDecision) ? specific.permissionDecision : null;
+    let decision = ['allow', 'deny', 'ask', 'force_ask'].includes(specific.permissionDecision) ? specific.permissionDecision : null;
     let reason = specific.permissionDecisionReason;
     if (!decision && typeof json.decision === 'string') {
-      decision = { block: 'deny', deny: 'deny', approve: 'allow', allow: 'allow', ask: 'ask' }[json.decision] ?? null;
+      decision = { block: 'deny', deny: 'deny', approve: 'allow', allow: 'allow', ask: 'ask', force_ask: 'force_ask' }[json.decision] ?? null;
       reason = json.reason;
     }
     if (!decision && json.continue === false) {
@@ -147,8 +241,18 @@ export function translateResult(entry, result) {
     if (decision === 'deny') out.reason = reasonOr(reason, 'Blocked by hook');
     else if (typeof reason === 'string' && reason) out.reason = reason;
     if (decision !== 'deny' && specific.updatedInput && typeof specific.updatedInput === 'object') {
-      const renames = REVERSE[entry.dialect]?.[entry.toolName]?.[1] ?? {};
-      out.overwrite = renameKeys(specific.updatedInput, invert(renames));
+      if (entry.toolName === 'call_mcp_tool' || entry.toolName === 'mcp_tool') {
+        const rawArgs = entry.toolArgs && typeof entry.toolArgs === 'object' ? entry.toolArgs : {};
+        const argKey = 'Arguments' in rawArgs ? 'Arguments' : ('arguments' in rawArgs ? 'arguments' : 'Arguments');
+        const wasString = typeof rawArgs[argKey] === 'string';
+        out.overwrite = {
+          ...rawArgs,
+          [argKey]: wasString ? JSON.stringify(specific.updatedInput) : specific.updatedInput,
+        };
+      } else {
+        const renames = REVERSE[entry.dialect]?.[entry.toolName]?.[1] ?? {};
+        out.overwrite = renameKeys(specific.updatedInput, invert(renames));
+      }
     }
     return { stdout: JSON.stringify(out) };
   }
@@ -170,6 +274,59 @@ export function translateResult(entry, result) {
   return { stdout: '{}', ...(feedback ? { warning: `PostToolUse feedback dropped (agy has no channel for it): ${feedback}` } : {}) };
 }
 
+const POSIX_SHELL_RE = /\b(?:bash|sh)\s+|\.sh\b|\$\(|\/dev\/null\b|\bexport\s+[A-Za-z_]\w*=|^\s*\[[\s!]/;
+
+function hasPosixShebang(command, cwd) {
+  const m = /^\s*(?:"([^"]+)"|'([^']+)'|(\S+))/.exec(command ?? '');
+  const token = m?.[1] ?? m?.[2] ?? m?.[3];
+  if (!token || /\.(?:exe|cmd|bat|ps1)$/i.test(token)) return false;
+  const candidate = isAbsolute(token) ? token : (cwd ? resolve(cwd, token) : token);
+  try {
+    if (!existsSync(candidate)) return false;
+    const head = readFileSync(candidate, 'utf8').slice(0, 128);
+    return /^#!\s*\//m.test(head);
+  } catch {
+    return false;
+  }
+}
+
+function findGitBash() {
+  const candidates = [
+    process.env.AGY_GIT_BASH,
+    'C:\\Program Files\\Git\\bin\\bash.exe',
+    'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
+    'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+    process.env.LOCALAPPDATA && resolve(process.env.LOCALAPPDATA, 'Programs\\Git\\bin\\bash.exe'),
+  ].filter(Boolean);
+  return candidates.find((p) => existsSync(p)) ?? null;
+}
+
+export function resolveHookSpawn(command, platform = process.platform, cwd = process.cwd()) {
+  if (platform === 'win32' && (POSIX_SHELL_RE.test(command) || hasPosixShebang(command, cwd))) {
+    const gitBash = findGitBash();
+    if (gitBash) {
+      return { file: gitBash, args: ['-c', command], shell: false };
+    }
+  }
+  return { file: command, args: [], shell: true };
+}
+
+function killProcessTree(child) {
+  if (!child?.pid) return;
+  try { child.stdout?.destroy(); } catch {}
+  try { child.stderr?.destroy(); } catch {}
+  try { child.stdin?.destroy(); } catch {}
+  if (process.platform === 'win32') {
+    try {
+      const tk = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+      tk.on('error', () => { try { child.kill(); } catch {} });
+      tk.unref();
+      return;
+    } catch {}
+  }
+  try { child.kill(); } catch {}
+}
+
 export function runCommand(command, { cwd, env, input, timeoutMs }) {
   return new Promise((resolve) => {
     let stdout = '';
@@ -182,9 +339,12 @@ export function runCommand(command, { cwd, env, input, timeoutMs }) {
       clearTimeout(timer);
       resolve({ stdout, stderr, ...extra });
     };
-    const timer = setTimeout(() => { child?.kill(); finish({ timedOut: true }); }, timeoutMs);
+    const timer = setTimeout(() => { killProcessTree(child); finish({ timedOut: true }); }, timeoutMs);
     try {
-      child = spawn(command, { cwd, env, shell: true, windowsHide: true });
+      const spec = resolveHookSpawn(command, process.platform, cwd);
+      child = spec.shell
+        ? spawn(spec.file, { cwd, env, shell: true, windowsHide: true })
+        : spawn(spec.file, spec.args, { cwd, env, windowsHide: true });
     } catch (err) {
       finish({ spawnError: err.message });
       return;
@@ -226,13 +386,16 @@ async function main() {
     const vars = entry.dialect === 'gemini'
       ? { extensionPath: pluginRoot, GEMINI_PROJECT_DIR: projectDir, CLAUDE_PROJECT_DIR: projectDir }
       : { CLAUDE_PLUGIN_ROOT: pluginRoot, CLAUDE_PROJECT_DIR: projectDir };
-    const result = await runCommand(expandCommand(entry.command, vars), {
+    const probeSpec = resolveHookSpawn(expandCommand(entry.command, vars, { posix: true }), process.platform, pluginRoot);
+    const usePosix = process.platform === 'win32' && !probeSpec.shell;
+    const envVars = usePosix ? Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, v.replace(/\\/g, '/')])) : vars;
+    const result = await runCommand(expandCommand(entry.command, vars, { posix: usePosix }), {
       cwd: pluginRoot,
-      env: { ...process.env, ...vars },
+      env: { ...process.env, ...envVars },
       input: JSON.stringify(toSourcePayload(entry, payload)),
       timeoutMs: (entry.timeout ?? 60) * 1000,
     });
-    const translated = translateResult({ ...entry, toolName: payload.toolCall?.name }, result);
+    const translated = translateResult({ ...entry, toolName: payload.toolCall?.name, toolArgs: payload.toolCall?.args }, result);
     out = translated.stdout;
     if (translated.warning) warn(translated.warning);
   } catch (err) {

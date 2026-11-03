@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { detect } from '../lib/detector.mjs';
 
 const NAMES = { claude: 'a Claude Code plugin', gemini: 'a Gemini CLI extension', cursor: 'Cursor rules', roo: 'Roo/Kilo modes', codex: 'Codex skills' };
-const done = (out) => { process.stdout.write(JSON.stringify(out)); process.exit(0); };
+const done = (out) => { process.stdout.write(JSON.stringify(out), () => process.exit(0)); };
 setTimeout(() => done({}), 3000).unref();
 
 // The app makes ~/.gemini/antigravity/plugin_data/<plugin>/ for each plugin; fall back to tmp.

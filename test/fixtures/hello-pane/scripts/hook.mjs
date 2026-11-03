@@ -7,6 +7,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+if (process.env.NODE_TEST_CONTEXT) process.exit(0);
 const done = () => process.exit(0);
 process.on('uncaughtException', done);
 process.on('unhandledRejection', done);

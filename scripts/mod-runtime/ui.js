@@ -16,7 +16,8 @@
 
   // Host theme: theme-change carries themeType (light/dark).
   window.addEventListener('message', (e) => {
-    if (e.origin !== location.ancestorOrigins?.[0]) return;
+    const parentOrigin = location.ancestorOrigins?.[0];
+    if (e.source !== window.parent || !e.origin || e.origin === 'null' || (parentOrigin && parentOrigin !== 'null' && e.origin !== parentOrigin)) return;
     if (e.data?.type === 'theme-change') {
       const t = e.data.payload?.themeType ?? e.data.payload?.theme;
       if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
