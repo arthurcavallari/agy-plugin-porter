@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PLUGIN, SIDECAR, pickEnv } from './locate.mjs';
 
+if (process.env.NODE_TEST_CONTEXT) process.exit(0);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST = '127.0.0.1';
 const envDir = process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR?.trim();

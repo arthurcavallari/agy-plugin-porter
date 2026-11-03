@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { detect } from '../lib/detector.mjs';
 import { compileHooks, writeHookPort } from '../lib/hook-compiler.mjs';
-import { expandCommand, toSourcePayload, translateResult } from '../scripts/hook-shim.mjs';
+import { expandCommand, resolveHookSpawn, runCommand, shouldRun, toSourcePayload, toSourceTool, translateResult } from '../scripts/hook-shim.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 
@@ -48,11 +48,13 @@ test('payload: agy camelCase -> Claude snake_case', () => {
   assert.equal(gemini.hook_event_name, 'BeforeTool');
 });
 
-test('expandCommand substitutes plugin variables only', () => {
+test('expandCommand substitutes plugin variables only and normalizes slashes in posix mode', () => {
   const vars = { CLAUDE_PLUGIN_ROOT: 'C:\\p q\\plug', CLAUDE_PROJECT_DIR: 'C:\\ws' };
   assert.equal(expandCommand('node "${CLAUDE_PLUGIN_ROOT}/x.mjs" $CLAUDE_PROJECT_DIR $HOME', vars),
     'node "C:\\p q\\plug/x.mjs" C:\\ws $HOME');
   assert.equal(expandCommand('node ${extensionPath}${/}x.mjs', { extensionPath: '/e' }), `node /e${sep}x.mjs`);
+  assert.equal(expandCommand('bash ${CLAUDE_PLUGIN_ROOT}${/}hooks${/}check.sh $CLAUDE_PROJECT_DIR', vars, { posix: true }),
+    'bash "C:/p q/plug/hooks/check.sh" C:/ws');
 });
 
 test('PreToolUse translation', () => {
@@ -69,6 +71,77 @@ test('PreToolUse translation', () => {
     hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'check', updatedInput: { command: 'ls -la' } } });
   assert.deepEqual(JSON.parse(translateResult({ ...pre, toolName: 'run_command' }, { code: 0, stdout: specific }).stdout),
     { decision: 'ask', reason: 'check', overwrite: { CommandLine: 'ls -la' } });
+});
+
+test('translateResult preserves force_ask decision and toSourceTool unwraps call_mcp_tool', () => {
+  const res = translateResult(
+    { event: 'PreToolUse', dialect: 'claude', timeout: 10 },
+    { code: 0, stdout: JSON.stringify({ decision: 'force_ask', reason: 'Confirm delete' }), stderr: '' },
+  );
+  assert.deepEqual(JSON.parse(res.stdout), { decision: 'force_ask', reason: 'Confirm delete' });
+
+  const resSpecific = translateResult(
+    { event: 'PreToolUse', dialect: 'claude', timeout: 10 },
+    { code: 0, stdout: JSON.stringify({ hookSpecificOutput: { permissionDecision: 'force_ask', permissionDecisionReason: 'Confirm' } }), stderr: '' },
+  );
+  assert.deepEqual(JSON.parse(resSpecific.stdout), { decision: 'force_ask', reason: 'Confirm' });
+
+  const unwrapped = toSourceTool({
+    name: 'call_mcp_tool',
+    args: { ServerName: 'zoho', ToolName: 'delete_task', Arguments: { id: '42' } },
+  }, 'claude');
+  assert.equal(unwrapped.tool_name, 'mcp__zoho__delete_task');
+  assert.deepEqual(unwrapped.tool_input, { id: '42' });
+
+  const unwrappedJsonStr = toSourceTool({
+    name: 'mcp_tool',
+    args: { server_name: 'slack', tool_name: 'post_msg', arguments: '{"channel":"general"}' },
+  }, 'claude');
+  assert.equal(unwrappedJsonStr.tool_name, 'mcp__slack__post_msg');
+  assert.deepEqual(unwrappedJsonStr.tool_input, { channel: 'general' });
+});
+
+test('resolveHookSpawn uses Git bash on win32 for .sh scripts, shebang scripts and POSIX subshells', () => {
+  const prev = process.env.AGY_GIT_BASH;
+  process.env.AGY_GIT_BASH = process.execPath;
+  const dir = mkdtempSync(join(tmpdir(), 'porter-shebang-'));
+  writeFileSync(join(dir, 'session-start'), '#!/usr/bin/env bash\necho ok\n');
+  try {
+    const spec = resolveHookSpawn('bash "C:/p/hooks/check.sh"', 'win32');
+    assert.equal(spec.file, process.execPath);
+    assert.deepEqual(spec.args, ['-c', 'bash "C:/p/hooks/check.sh"']);
+    assert.equal(spec.shell, false);
+
+    const shebangSpec = resolveHookSpawn(`"${join(dir, 'session-start').replace(/\\/g, '/')}"`, 'win32', dir);
+    assert.equal(shebangSpec.file, process.execPath);
+    assert.equal(shebangSpec.shell, false);
+
+    const nodeSpec = resolveHookSpawn('node "C:/p/hooks/check.mjs"', 'win32');
+    assert.equal(nodeSpec.shell, true);
+  } finally {
+    if (prev === undefined) delete process.env.AGY_GIT_BASH;
+    else process.env.AGY_GIT_BASH = prev;
+  }
+});
+
+test('shouldRun filters narrow MCP source matchers and PostToolUse failure state', () => {
+  const entry = { event: 'PreToolUse', sourceEvent: 'PreToolUse', dialect: 'claude', matcher: 'mcp__zoho__delete_record' };
+  assert.equal(shouldRun(entry, { toolCall: { name: 'call_mcp_tool', args: { ServerName: 'zoho', ToolName: 'delete_record' } } }), true);
+  assert.equal(shouldRun(entry, { toolCall: { name: 'call_mcp_tool', args: { ServerName: 'github', ToolName: 'list_issues' } } }), false);
+
+  const anchored = { event: 'PreToolUse', sourceEvent: 'PreToolUse', dialect: 'claude', matcher: '^mcp__[A-Za-z0-9._-]*exabeam[A-Za-z0-9._-]*__' };
+  assert.equal(shouldRun(anchored, { toolCall: { name: 'call_mcp_tool', args: { ServerName: 'my-exabeam-prod', ToolName: 'query' } } }), true);
+  assert.equal(shouldRun(anchored, { toolCall: { name: 'call_mcp_tool', args: { ServerName: 'slack', ToolName: 'post' } } }), false);
+});
+
+test('runCommand times out and terminates child trees cleanly', async () => {
+  const res = await runCommand(`"${process.execPath}" -e "setInterval(() => {}, 1000)"`, {
+    cwd: process.cwd(),
+    env: process.env,
+    input: '{}',
+    timeoutMs: 120,
+  });
+  assert.equal(res.timedOut, true);
 });
 
 test('non-2 failures allow with a warning (Claude semantics)', () => {
@@ -152,3 +225,128 @@ test('e2e: crashing script and unknown hook id allow with a warning, exit 0', ()
   assert.equal(unknown.stdout, '{}');
   assert.match(unknown.stderr, /no hook "stop-9"/);
 });
+
+test('PORTER-01: toSourcePayload maps eager mcp_<server>_<tool> back to mcp__<server>__<tool>', () => {
+  const entry = { event: 'PreToolUse', sourceEvent: 'PreToolUse', dialect: 'claude', matcher: 'mcp__zoho__delete_record' };
+  const rawPayload = {
+    toolCall: {
+      name: 'mcp_zoho_delete_record',
+      args: { record_id: '42' },
+    },
+  };
+  const payload = toSourcePayload(entry, rawPayload);
+  assert.equal(payload.tool_name, 'mcp__zoho__delete_record');
+  assert.deepEqual(payload.tool_input, { record_id: '42' });
+  assert.equal(shouldRun(entry, rawPayload), true);
+
+  // Server name containing underscore resolved via entry.matcher
+  const multiUnderscoreEntry = { event: 'PreToolUse', sourceEvent: 'PreToolUse', dialect: 'claude', matcher: 'mcp__my_server__delete_record' };
+  const multiRawPayload = {
+    toolCall: {
+      name: 'mcp_my_server_delete_record',
+      args: { id: '7' },
+    },
+  };
+  const multiPayload = toSourcePayload(multiUnderscoreEntry, multiRawPayload);
+  assert.equal(multiPayload.tool_name, 'mcp__my_server__delete_record');
+  assert.deepEqual(multiPayload.tool_input, { id: '7' });
+  assert.equal(shouldRun(multiUnderscoreEntry, multiRawPayload), true);
+});
+
+test('PORTER-02: shouldRun handles anchored alternations, parens, prefixes, and ignores generic call_mcp_tool rawToolName', () => {
+  const mkEntry = (matcher) => ({ event: 'PreToolUse', sourceEvent: 'PreToolUse', dialect: 'claude', matcher });
+  const exabeamCall = { toolCall: { name: 'call_mcp_tool', args: { ServerName: 'exabeam', ToolName: 'search_events', Arguments: {} } } };
+  assert.equal(shouldRun(mkEntry('Bash|^mcp__exabeam__'), exabeamCall), true);
+  assert.equal(shouldRun(mkEntry('(^mcp__exabeam__)'), exabeamCall), true);
+  assert.equal(shouldRun(mkEntry('mcp__exabeam__'), exabeamCall), true);
+  assert.equal(shouldRun(mkEntry('Bash|^mcp__exabeam__'), { toolCall: { name: 'Bash_extra', args: {} } }), false);
+  // Generic rawToolName must not cause false-positive match on unrelated MCP tool
+  const githubCall = { toolCall: { name: 'call_mcp_tool', args: { ServerName: 'github', ToolName: 'create_issue', Arguments: {} } } };
+  assert.equal(shouldRun(mkEntry('call_mcp_tool|mcp__zoho__delete_record'), githubCall), false);
+});
+
+test('PORTER-03: translateResult preserves call_mcp_tool ServerName/ToolName envelope when hook returns updatedInput', () => {
+  const entry = {
+    event: 'PreToolUse',
+    dialect: 'claude',
+    matcher: 'mcp__zoho__update_record',
+    toolName: 'call_mcp_tool',
+    toolArgs: {
+      ServerName: 'zoho',
+      ToolName: 'update_record',
+      Arguments: { id: '1', status: 'draft' },
+    },
+  };
+  const res = translateResult(entry, {
+    code: 0,
+    stdout: JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'allow',
+        updatedInput: { id: '1', status: 'approved' },
+      },
+    }),
+    stderr: '',
+  });
+  assert.deepEqual(JSON.parse(res.stdout).overwrite, {
+    ServerName: 'zoho',
+    ToolName: 'update_record',
+    Arguments: { id: '1', status: 'approved' },
+  });
+
+  // Also preserves stringified JSON Arguments when original Arguments was a JSON string
+  const strEntry = {
+    ...entry,
+    toolArgs: {
+      ServerName: 'zoho',
+      ToolName: 'update_record',
+      Arguments: JSON.stringify({ id: '1', status: 'draft' }),
+    },
+  };
+  const strRes = translateResult(strEntry, {
+    code: 0,
+    stdout: JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'allow',
+        updatedInput: { id: '1', status: 'approved' },
+      },
+    }),
+    stderr: '',
+  });
+  assert.deepEqual(JSON.parse(strRes.stdout).overwrite, {
+    ServerName: 'zoho',
+    ToolName: 'update_record',
+    Arguments: JSON.stringify({ id: '1', status: 'approved' }),
+  });
+});
+
+test('PORTER-04: expandCommand quotes paths with spaces and resolveHookSpawn handles #!/usr/bin/env node shebangs', () => {
+  const rootWithSpaces = 'C:\\Users\\Jane Doe\\.gemini\\plugins\\my-plugin';
+  const expanded = expandCommand('node ${CLAUDE_PLUGIN_ROOT}/scripts/guard.mjs --flag', { CLAUDE_PLUGIN_ROOT: rootWithSpaces }, { posix: true });
+  assert.equal(expanded, 'node "C:/Users/Jane Doe/.gemini/plugins/my-plugin/scripts/guard.mjs" --flag');
+
+  // Already-quoted token must not be double-quoted
+  const alreadyQuoted = expandCommand('node "${CLAUDE_PLUGIN_ROOT}/scripts/guard.mjs" --flag', { CLAUDE_PLUGIN_ROOT: rootWithSpaces }, { posix: true });
+  assert.equal(alreadyQuoted, 'node "C:/Users/Jane Doe/.gemini/plugins/my-plugin/scripts/guard.mjs" --flag');
+
+  // Script with #!/usr/bin/env node shebang in a directory with spaces
+  const baseDir = mkdtempSync(join(tmpdir(), 'porter space dir '));
+  mkdirSync(join(baseDir, 'scripts'), { recursive: true });
+  const scriptPath = join(baseDir, 'shebang-hook.mjs');
+  writeFileSync(scriptPath, '#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({ decision: "deny", reason: "from-shebang" }));\n');
+  writeFileSync(join(baseDir, 'scripts/hook-shim.json'), JSON.stringify({
+    hooks: {
+      'pre-1': { event: 'PreToolUse', sourceEvent: 'PreToolUse', dialect: 'claude', command: '${CLAUDE_PLUGIN_ROOT}/shebang-hook.mjs' },
+    },
+  }));
+  cpSync(join(fixture('claude'), '..', '..', '..', 'scripts', 'hook-shim.mjs'), join(baseDir, 'scripts/hook-shim.mjs'));
+  const run = spawnSync(process.execPath, [join(baseDir, 'scripts/hook-shim.mjs'), '--event', 'PreToolUse', '--hook', 'pre-1'], {
+    cwd: baseDir,
+    input: JSON.stringify(livePre('echo test')),
+    encoding: 'utf8',
+  });
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(JSON.parse(run.stdout), { decision: 'deny', reason: 'from-shebang' });
+});
+

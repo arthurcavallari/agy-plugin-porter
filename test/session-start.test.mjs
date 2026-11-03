@@ -50,3 +50,13 @@ test('UI mods are counted; plain folders, missing paths and bad input give {} an
     assert.deepEqual(r.out, {});
   }
 });
+
+test('PORTER-08: test/agy-stub.mjs exits 0 when invoked with no arguments under NODE_TEST_CONTEXT', () => {
+  const stub = fileURLToPath(new URL('./agy-stub.mjs', import.meta.url));
+  const r = spawnSync(process.execPath, [stub], {
+    encoding: 'utf8',
+    env: { ...process.env, NODE_TEST_CONTEXT: 'child-v8' },
+  });
+  assert.equal(r.status, 0);
+});
+

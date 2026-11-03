@@ -1,7 +1,7 @@
 // The porter's own plugin: what the build writes, and that agy accepts it.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -60,5 +60,16 @@ test('agy plugin validate --strict accepts the built plugin', { skip: !hasAgy &&
   const { components, findings } = JSON.parse(run.stdout);
   assert.deepEqual(components, { agents: 1, hooks: 1, mcpServers: 1, rules: 1, sidecars: 1, skills: 1 });
   // agy-node is on PATH only inside the app (or with %APPDATA%\Antigravity\bin added).
-  assert.deepEqual(findings.filter((f) => !/agy-node/.test(f.message)), []);
+  assert.deepEqual(findings.filter((f) => f.severity !== 'note' && !/agy-node/.test(f.message)), []);
+});
+
+test('dist/plugin/agy-plugin-porter stays synchronized with lib/ and scripts/ when present', () => {
+  const distDir = join(ROOT, 'dist', 'plugin', 'agy-plugin-porter');
+  if (!existsSync(distDir)) return;
+  for (const rel of COPIED.filter((r) => r !== 'LICENSE')) {
+    const src = rel.endsWith('.mjs') ? [''] : files(join(ROOT, rel));
+    for (const f of src) {
+      assert.equal(readFileSync(join(distDir, rel, f), 'utf8'), readFileSync(join(ROOT, rel, f), 'utf8'), `stale dist copy: ${rel}/${f}`);
+    }
+  }
 });

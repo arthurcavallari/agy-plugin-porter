@@ -4,6 +4,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+if (process.env.NODE_TEST_CONTEXT && !process.env.CLAUDE_PLUGIN_ROOT) process.exit(0);
 const raw = readFileSync(0, 'utf8');
 appendFileSync(join(tmpdir(), 'agy-porter-fixture.log'), JSON.stringify({
   tag: 'bash-guard', at: new Date().toISOString(), cwd: process.cwd(),

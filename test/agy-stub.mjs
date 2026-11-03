@@ -3,6 +3,7 @@
 import { appendFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
+if (process.env.NODE_TEST_CONTEXT && args.length === 0) process.exit(0);
 if (process.env.AGY_STUB_LOG) appendFileSync(process.env.AGY_STUB_LOG, `${JSON.stringify(args)}\n`);
 if (args[0] === '--version') console.log('0.0.0-stub');
 else if (args[0] === 'plugin' && args[1] === 'validate') console.log(JSON.stringify({ components: {}, findings: [] }));

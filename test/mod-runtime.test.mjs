@@ -8,7 +8,7 @@ import { test } from 'node:test';
 
 import { AGY_TOOLS, TOOLS } from '../lib/tool-map.mjs';
 import { removeServerInfoIfOurs, writeServerInfo } from '../scripts/mod-runtime/lifecycle.mjs';
-import { claudeToolName } from '../scripts/mod-runtime/tool-calls.mjs';
+import { claudeToolName, overwriteOf, toClaudeCall } from '../scripts/mod-runtime/tool-calls.mjs';
 import { compileSource, find, fixture, hasEsbuild, openView, runHook, startSidecar, tempDir, textOf, wait } from './mod-helpers.mjs';
 
 const tsx = { skip: !hasEsbuild && 'esbuild not installed' };
@@ -120,3 +120,34 @@ test("the runtime's tool names agree with lib/tool-map.mjs", () => {
     assert.ok(TOOLS.claude[claude]?.includes(agy), `${agy} -> ${claude}`);
   }
 });
+
+test('PORTER-06: toClaudeCall and overwriteOf unwrap and re-wrap call_mcp_tool and eager mcp_<server>_<tool>', () => {
+  const { e, args } = toClaudeCall({
+    name: 'call_mcp_tool',
+    args: {
+      ServerName: 'github',
+      ToolName: 'create_issue',
+      Arguments: { title: 'bug' },
+    },
+  });
+  assert.deepEqual(e, {
+    tool: 'mcp__github__create_issue',
+    title: 'bug',
+  });
+
+  const over = overwriteOf(args, e, { ...e, title: 'fixed' });
+  assert.deepEqual(over, {
+    ServerName: 'github',
+    ToolName: 'create_issue',
+    Arguments: { title: 'fixed' },
+  });
+
+  const eager = toClaudeCall({ name: 'mcp_github_create_issue', args: { title: 'bug' } });
+  assert.deepEqual(eager.e, {
+    tool: 'mcp__github__create_issue',
+    title: 'bug',
+  });
+  const eagerOver = overwriteOf(eager.args, eager.e, { ...eager.e, title: 'fixed' });
+  assert.deepEqual(eagerOver, { title: 'fixed' });
+});
+
