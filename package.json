@@ -16,6 +16,10 @@
   "bugs": {
     "url": "https://github.com/arthurcavallari/agy-plugin-porter/issues"
   },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/arthurcavallari"
+  },
   "keywords": [
     "antigravity",
     "google-antigravity",

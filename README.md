@@ -1,5 +1,13 @@
 # agy-plugin-porter
 
+<p>
+  <a href="https://www.npmjs.com/package/agy-plugin-porter"><img src="https://img.shields.io/npm/v/agy-plugin-porter?logo=npm&color=cb3837" alt="npm version" height="20"></a>
+  <a href="https://github.com/arthurcavallari/agy-plugin-porter/actions/workflows/test.yml"><img src="https://github.com/arthurcavallari/agy-plugin-porter/actions/workflows/test.yml/badge.svg" alt="Tests" height="20"></a>
+  <img src="https://img.shields.io/node/v/agy-plugin-porter?logo=nodedotjs&logoColor=white&color=339933" alt="Node.js version" height="20">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" height="20"></a>
+  <a href="https://github.com/sponsors/arthurcavallari"><img src="https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub" height="20"></a>
+</p>
+
 > Ports Claude Code, Gemini CLI, Cursor, Roo/Kilo and Codex plugins to native **Google Antigravity** plugins, and tells you exactly what did and didn't carry over.
 
 `agy plugin install` already stages Claude Code and Gemini CLI plugins, but much of what it stages never runs. Hooks keep their foreign shape, `${CLAUDE_PLUGIN_ROOT}` stays unexpanded, and Claude agents are skipped by the loader. `CLAUDE.md` is never loaded either. agy still reports success. Cursor, Roo/Kilo and Codex sources aren't detected at all.
@@ -109,6 +117,12 @@ npm run test:pack  # packs the tarball, installs it in an empty project, and run
 ```
 
 The tests that need agy (Claude/Gemini staging and `agy plugin validate`) skip when `agy` isn't on `PATH`, as on the CI runners. Run `npm test` locally with agy installed to cover them. Releases publish from a `v*` tag through npm trusted publishing (`.github/workflows/publish.yml`).
+
+## Support
+
+Built and maintained in my spare time (with constant keyboard supervision from my three cats, **Snow** 🤍, **Eevee** 🦊, and **Merlin** 🧙‍♂️).
+
+If **agy-plugin-porter** saves you time porting and auditing plugins for Antigravity, consider [❤️ sponsoring me on GitHub Sponsors](https://github.com/sponsors/arthurcavallari) to help fund ongoing maintenance, new transpiler support, and the household Churu treat budget!
 
 ## License
 
