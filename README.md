@@ -14,7 +14,7 @@
 
 `agy-plugin-porter` fills those gaps and audits the result. It's zero-dependency (`esbuild` is optional, for TS/TSX UI mods), pure Node.js (`>= 20.0.0`) ESM, and it's built to be the porting engine for [**Antigravity Hangar**](https://github.com/arthurcavallari/antigravity-hangar)'s plugin installs. That integration is planned and not built yet.
 
-**Status: 0.x.** Phases 0–2 of [`docs/plan.md`](docs/plan.md) are done, plus Phase 2.5 (Claude Code UI mods, [`docs/phase-2.5-ui-mods-plan.md`](docs/phase-2.5-ui-mods-plan.md)). What agy itself handles was measured against agy 1.4.5 and is recorded in [`docs/agy-baseline.md`](docs/agy-baseline.md).
+**Status: 0.x.** Phases 0–2 of [`docs/plan.md`](docs/plan.md) are done, plus Phase 2.5 (Claude Code UI mods, [`docs/phase-2.5-ui-mods-plan.md`](docs/phase-2.5-ui-mods-plan.md)) and Phase 4 ([the porter inside Antigravity](#the-porter-inside-antigravity)). What agy itself handles was measured against agy 1.4.5 and is recorded in [`docs/agy-baseline.md`](docs/agy-baseline.md).
 
 ---
 
@@ -93,6 +93,33 @@ Before writing the output, the porter:
 - strips Unicode tag characters (U+E0000–E007F)
 - flags `curl | sh`-style pipes, decode-and-execute patterns, encoded PowerShell, bidi controls and high-entropy strings
 - checks agy's 24 KB per-rule and 20k-token always-on rules budgets
+
+## The porter inside Antigravity
+
+The porter also ships as an Antigravity plugin, so you can port from inside the app. GitHub releases after 0.1.0 carry it as `agy-plugin-porter-plugin-<version>.tgz`, with a `.sha256` beside it. Unpack it and install the folder:
+
+```bash
+tar -xzf agy-plugin-porter-plugin-<version>.tgz
+agy plugin install ./agy-plugin-porter
+```
+
+To build it from a checkout instead, run `npm run build:plugin` and install `dist/plugin/agy-plugin-porter`.
+
+The plugin adds:
+- **A detector.** When a conversation starts in a workspace that holds a Claude Code, Gemini CLI, Cursor, Roo/Kilo or Codex plugin, the agent is told once per workspace. It mentions the plugin and doesn't port anything unasked.
+- **A skill, an agent and rules** for porting with the porter, never by hand.
+- **Two MCP tools**, `port_preview` and `port_install` (server `agy-plugin-porter_cli`).
+- **The Plugin Porter pane.** Enter a folder or `owner/repo@<tag>`, read the full port report, then install.
+
+**Consent.** Every install starts with a preview, which ports into a temp folder and shows the report. An install takes only that preview's output, and only when it gets back the preview's tier and audit-findings digest. That's the same rule Hangar's installer uses. The pane asks you in a confirm dialog. The agent is told to show you the report and wait for your yes, but only the pane's dialog is enforced. Previews expire after an hour.
+
+**Limits:**
+- There's no `esbuild` inside the plugin, so TS/TSX UI mods are reported unported. Port those with `npx agy-plugin-porter`.
+- Claude Code and Gemini CLI sources need `agy` on the app's PATH, and GitHub sources need `git`. Both were there in the live run.
+
+**Uninstalling:** switch it off in **Customizations > Plugins** first, then run `agy plugin uninstall agy-plugin-porter`.
+
+What was tested live, and what the app leaves behind after an uninstall, is in [`docs/plugin-baseline.md`](docs/plugin-baseline.md).
 
 ## Library
 
