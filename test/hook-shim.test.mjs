@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { test } from 'node:test';
@@ -351,5 +351,27 @@ test('PORTER-04: expandCommand quotes paths with spaces and resolveHookSpawn han
   assert.equal(run.status, 0, run.stderr);
   assert.ok(run.stdout, `the shim printed nothing (it failed open): ${run.stderr}`);
   assert.deepEqual(JSON.parse(run.stdout), { decision: 'deny', reason: 'from-shebang' });
+});
+
+// Node resolves symlinks in the main module's URL but not in argv[1]; macOS's
+// tmpdir (/var -> /private/var) and a linked home both hit this.
+test('the shim runs when its plugin is reached through a linked folder', () => {
+  const real = mkdtempSync(join(tmpdir(), 'porter-linked-'));
+  mkdirSync(join(real, 'scripts'));
+  writeFileSync(join(real, 'hook.mjs'), 'process.stdout.write(JSON.stringify({ decision: "deny", reason: "linked" }));\n');
+  writeFileSync(join(real, 'scripts/hook-shim.json'), JSON.stringify({
+    hooks: { 'pre-1': { event: 'PreToolUse', sourceEvent: 'PreToolUse', dialect: 'claude', command: 'node hook.mjs' } },
+  }));
+  cpSync(fileURLToPath(new URL('../scripts/hook-shim.mjs', import.meta.url)), join(real, 'scripts/hook-shim.mjs'));
+  const link = `${real}-link`;
+  symlinkSync(real, link, 'junction');
+  const run = spawnSync(process.execPath, [join(link, 'scripts/hook-shim.mjs'), '--event', 'PreToolUse', '--hook', 'pre-1'], {
+    cwd: link,
+    input: JSON.stringify(livePre('echo test')),
+    encoding: 'utf8',
+  });
+  assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout, `the shim printed nothing: ${run.stderr}`);
+  assert.deepEqual(JSON.parse(run.stdout), { decision: 'deny', reason: 'linked' });
 });
 
