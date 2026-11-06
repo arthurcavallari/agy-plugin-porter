@@ -349,6 +349,7 @@ test('PORTER-04: expandCommand quotes paths with spaces and resolveHookSpawn han
     encoding: 'utf8',
   });
   assert.equal(run.status, 0, run.stderr);
+  assert.ok(run.stdout, `the shim printed nothing (it failed open): ${run.stderr}`);
   assert.deepEqual(JSON.parse(run.stdout), { decision: 'deny', reason: 'from-shebang' });
 });
 
