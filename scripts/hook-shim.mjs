@@ -11,9 +11,9 @@
 //   the script decided something.
 // - SessionStart / Stop / PostToolUse: stdout must be a JSON object.
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, resolve, sep } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 // agy tool name -> source tool name and arg renames. Arg names are the agy CLI's
 // as seen live; the IDE-named tools reuse them unverified. Unknown args pass through.
@@ -404,4 +404,15 @@ async function main() {
   process.stdout.write(out, () => process.exit(0));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+// Node resolves symlinks in the main module's URL but not in argv[1], so compare
+// real paths. Otherwise a plugin reached through a symlink (macOS's /var, a linked
+// home or .gemini) never runs its hooks.
+function isMain() {
+  try {
+    return Boolean(process.argv[1]) && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) main();
