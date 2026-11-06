@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { test } from 'node:test';
@@ -335,6 +335,8 @@ test('PORTER-04: expandCommand quotes paths with spaces and resolveHookSpawn han
   mkdirSync(join(baseDir, 'scripts'), { recursive: true });
   const scriptPath = join(baseDir, 'shebang-hook.mjs');
   writeFileSync(scriptPath, '#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({ decision: "deny", reason: "from-shebang" }));\n');
+  // On Linux and macOS the shell runs the script itself, which needs the execute bit.
+  chmodSync(scriptPath, 0o755);
   writeFileSync(join(baseDir, 'scripts/hook-shim.json'), JSON.stringify({
     hooks: {
       'pre-1': { event: 'PreToolUse', sourceEvent: 'PreToolUse', dialect: 'claude', command: '${CLAUDE_PLUGIN_ROOT}/shebang-hook.mjs' },
