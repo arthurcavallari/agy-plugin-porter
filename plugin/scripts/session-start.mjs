@@ -3,7 +3,7 @@
 // Always prints a JSON object and exits 0: a hook must never break a session.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,11 +13,10 @@ const NAMES = { claude: 'a Claude Code plugin', gemini: 'a Gemini CLI extension'
 const done = (out) => { process.stdout.write(JSON.stringify(out), () => process.exit(0)); };
 setTimeout(() => done({}), 3000).unref();
 
-// The app makes ~/.gemini/antigravity/plugin_data/<plugin>/ for each plugin; fall back to tmp.
+// The app makes ~/.gemini/antigravity/plugin_data/<plugin>/ for each plugin; make it if it's missing.
 function stateFile() {
   if (process.env.AGY_PORTER_STATE_DIR) return join(process.env.AGY_PORTER_STATE_DIR, 'session-start.json');
-  const pluginData = join(homedir(), '.gemini', 'antigravity', 'plugin_data');
-  const dir = existsSync(pluginData) ? join(pluginData, 'agy-plugin-porter') : join(tmpdir(), 'agy-plugin-porter');
+  const dir = join(homedir(), '.gemini', 'antigravity', 'plugin_data', 'agy-plugin-porter');
   mkdirSync(dir, { recursive: true });
   return join(dir, 'session-start.json');
 }

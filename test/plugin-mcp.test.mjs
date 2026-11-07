@@ -22,7 +22,7 @@ before(() => {
   const tmp = mkdtempSync(join(tmpdir(), 'porter-mcp-'));
   agyLog = join(tmp, 'agy.log');
   server = spawn(process.execPath, [join(dir, 'mcp', 'server.mjs')], {
-    env: { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp, AGY_PORTER_AGY: STUB, AGY_STUB_LOG: agyLog },
+    env: { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp, AGY_PORTER_PREVIEWS_DIR: join(tmp, 'previews'), AGY_PORTER_AGY: STUB, AGY_STUB_LOG: agyLog },
     stdio: ['pipe', 'pipe', 'inherit'],
   });
   let buf = '';

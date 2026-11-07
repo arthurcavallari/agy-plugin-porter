@@ -20,7 +20,7 @@ before(async () => {
   buildPlugin({ outRoot, tar: false });
   const tmp = mkdtempSync(join(tmpdir(), 'porter-cockpit-'));
   agyLog = join(tmp, 'agy.log');
-  Object.assign(process.env, { TMPDIR: tmp, TEMP: tmp, TMP: tmp, AGY_PORTER_AGY: STUB, AGY_STUB_LOG: agyLog });
+  Object.assign(process.env, { TMPDIR: tmp, TEMP: tmp, TMP: tmp, AGY_PORTER_PREVIEWS_DIR: join(tmp, 'previews'), AGY_PORTER_AGY: STUB, AGY_STUB_LOG: agyLog });
   s = await startSidecar(join(outRoot, 'agy-plugin-porter'), 'cockpit');
 });
 after(() => s?.close());
