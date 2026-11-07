@@ -120,6 +120,19 @@ test('skills: command skills get a name, args placeholders, folder fixes', () =>
   assert.ok(report.ported.includes('command → skill:p-cmd-clean-gone'));
 });
 
+// anthropics/claude-plugins-official plugin-dev's create-plugin command, checked out with CRLF.
+test('skills: CRLF frontmatter with a multi-line flow list; unparseable frontmatter never becomes the description', () => {
+  const dir = tmp();
+  const src = tmp();
+  write(src, 'commands/create.md', 'x');
+  write(dir, 'skills/p-cmd-create/SKILL.md', '---\r\ndescription: Guided plugin creation\r\nargument-hint: Optional plugin description\r\nallowed-tools:\r\n  [\r\n    "Read",\r\n    "Write",\r\n  ]\r\n---\r\n\r\nDo it.\r\n');
+  write(dir, 'skills/broken/SKILL.md', '---\r\nthis line has no key\r\n---\r\n\r\n# Real title\r\n');
+  const report = compileSkills(dir, { srcDir: src, ecosystems: ['claude'] });
+  assert.deepEqual(fm(dir, 'skills/p-cmd-create/SKILL.md').data, { name: 'p-cmd-create', description: 'Guided plugin creation' });
+  assert.equal(fm(dir, 'skills/broken/SKILL.md').data.description, 'Real title');
+  assert.ok(report.warnings.some((w) => w.startsWith('skill:broken: frontmatter isn\'t parseable')));
+});
+
 test('skills: Codex .agents/skills are copied in', () => {
   const dir = tmp();
   compileSkills(dir, { srcDir: fixture('codex'), ecosystems: ['codex'] });
@@ -201,6 +214,16 @@ test('agents: Roo groups never widen a restricted edit group', () => {
     tools: ['find_by_name', 'grep_search', 'list_dir', 'read_file', 'view_file'], mcp: true,
   });
   assert.deepEqual(report.unported.map((u) => u.item), ['mode:x group edit (\\.md$)', 'mode:x group browser']);
+});
+
+// GreatScottyMac/RooFlow keeps each mode's real instructions in .roo/system-prompt-<slug>.
+test('agents: a Roo system-prompt override is reported, not dropped silently', () => {
+  const src = tmp();
+  write(src, '.roomodes', 'customModes:\n  - slug: flow-code\n    name: Flow Code\n    roleDefinition: You write code.\n    groups: [read]\n');
+  write(src, '.roo/system-prompt-flow-code', 'You are Roo...');
+  const report = compileModes(tmp(), { srcDir: src, ecosystems: ['roo'], slug: 'p' });
+  assert.ok(report.ported.some((p) => p.startsWith('mode:flow-code →')));
+  assert.deepEqual(report.unported.map((u) => u.item), ['mode:flow-code .roo/system-prompt-flow-code']);
 });
 
 test('agents: Claude agent file and Roo fixture modes', () => {
