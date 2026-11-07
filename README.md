@@ -12,7 +12,7 @@
 
 `agy plugin install` already stages Claude Code and Gemini CLI plugins, but much of what it stages never runs. Hooks keep their foreign shape, `${CLAUDE_PLUGIN_ROOT}` stays unexpanded, and Claude agents are skipped by the loader. `CLAUDE.md` is never loaded either. agy still reports success. Cursor, Roo/Kilo and Codex sources aren't detected at all.
 
-`agy-plugin-porter` fills those gaps and audits the result. It's zero-dependency (`esbuild` is optional, for TS/TSX UI mods), pure Node.js (`>= 20.0.0`) ESM, and it's built to be the porting engine for [**Antigravity Hangar**](https://github.com/arthurcavallari/antigravity-hangar)'s plugin installs. That integration is planned and not built yet.
+`agy-plugin-porter` fills those gaps and audits the result. It's zero-dependency (`esbuild` is optional, for TS/TSX UI mods), pure Node.js (`>= 20.0.0`) ESM, and it's the porting engine behind [**Antigravity Hangar**](https://github.com/arthurcavallari/antigravity-hangar)'s plugin installs (Hangar 1.2.0 and later).
 
 **Status: 0.x.** Phases 0–2 of [`docs/plan.md`](docs/plan.md) are done, plus Phase 2.5 (Claude Code UI mods, [`docs/phase-2.5-ui-mods-plan.md`](docs/phase-2.5-ui-mods-plan.md)) and Phase 4 ([the porter inside Antigravity](#the-porter-inside-antigravity)). What agy itself handles was measured against agy 1.4.5 and is recorded in [`docs/agy-baseline.md`](docs/agy-baseline.md).
 
