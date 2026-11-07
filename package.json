@@ -1,6 +1,6 @@
 {
   "name": "agy-plugin-porter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Ports Claude Code, Gemini CLI, Cursor, Roo/Kilo and Codex plugins to native Antigravity plugins.",
   "type": "module",
   "license": "MIT",
