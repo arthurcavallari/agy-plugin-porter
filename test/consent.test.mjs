@@ -1,8 +1,8 @@
-// Previews and consent: a preview ports into a temp folder, and an install takes it
+// Previews and consent: a preview ports into a private folder, and an install takes it
 // only with the preview's tier and audit-findings digest handed back.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -16,8 +16,22 @@ const log = () => readFileSync(process.env.AGY_STUB_LOG, 'utf8').trim().split('\
 before(() => {
   const tmp = mkdtempSync(join(tmpdir(), 'porter-consent-'));
   for (const k of ['TMPDIR', 'TEMP', 'TMP']) process.env[k] = tmp;
+  process.env.AGY_PORTER_PREVIEWS_DIR = join(tmp, 'previews');
   process.env.AGY_PORTER_AGY = STUB;
   process.env.AGY_STUB_LOG = join(tmp, 'agy.log');
+});
+
+test('previews default to a per-user cache folder, outside the shared temp dir', () => {
+  const override = process.env.AGY_PORTER_PREVIEWS_DIR;
+  delete process.env.AGY_PORTER_PREVIEWS_DIR;
+  try {
+    const dir = previewsDir();
+    const base = process.platform === 'win32' ? process.env.LOCALAPPDATA || homedir() : process.env.XDG_CACHE_HOME || homedir();
+    assert.ok(dir.startsWith(base), dir);
+    assert.ok(!dir.startsWith(tmpdir()), dir);
+  } finally {
+    process.env.AGY_PORTER_PREVIEWS_DIR = override;
+  }
 });
 
 test('flagsDigest matches Hangar\'s: empty without flags, order-independent', () => {
@@ -30,6 +44,8 @@ test('flagsDigest matches Hangar\'s: empty without flags, order-independent', ()
 
 test('a preview ports, validates with agy and lists; install needs the matching consent', async () => {
   const preview = await createPreview({ source: fixture('cursor'), slug: 'cursor-rules' });
+  // Only the user can read or write a preview (POSIX; Windows has no mode bits).
+  if (process.platform !== 'win32') assert.equal(statSync(join(previewsDir(), preview.id)).mode & 0o077, 0);
   assert.equal(preview.slug, 'cursor-rules');
   assert.equal(preview.tier, 'TIER_1_TELEMETRY');
   assert.equal(preview.validated, true);

@@ -111,7 +111,7 @@ The plugin adds:
 - **Two MCP tools**, `port_preview` and `port_install` (server `agy-plugin-porter_cli`).
 - **The Plugin Porter pane.** Enter a folder or `owner/repo@<tag>`, read the full port report, then install.
 
-**Consent.** Every install starts with a preview, which ports into a temp folder and shows the report. An install takes only that preview's output, and only when it gets back the preview's tier and audit-findings digest. That's the same rule Hangar's installer uses. The pane asks you in a confirm dialog. The agent is told to show you the report and wait for your yes, but only the pane's dialog is enforced. Previews expire after an hour.
+**Consent.** Every install starts with a preview, which ports into a temp folder and shows the report. An install takes only that preview's output, and only when it gets back the preview's tier and audit-findings digest. That's the same rule Hangar's installer uses. The pane asks you in a confirm dialog. The agent is told to show you the report and wait for your yes, but only the pane's dialog is enforced. Previews are kept in a folder only you can access (`%LOCALAPPDATA%\agy-plugin-porter\previews` on Windows, `~/.cache/agy-plugin-porter/previews` elsewhere), never in the shared temp folder, and expire after an hour.
 
 **Limits:**
 - There's no `esbuild` inside the plugin, so TS/TSX UI mods are reported unported. Port those with `npx agy-plugin-porter`.

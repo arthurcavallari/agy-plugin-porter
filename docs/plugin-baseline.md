@@ -50,6 +50,12 @@ Every claim is labeled, as in [ui-mods-baseline.md](./ui-mods-baseline.md):
 | **`agy plugin uninstall` leaves the app's own files.** After uninstalling, these were left: the `sidecars["agy-plugin-porter/cockpit"]` entry in `config.json`, its `config/projects/` file, the MCP tool caches (`antigravity/mcp/agy-plugin-porter_cli`, `fixture-claude_inline-echo`, `fixture-claude_github`), and the `plugin_data` and `sidecar_data` folders. By 2026-11-06 the app had removed the `plugin_data` folder and the project file on its own. | Profile diff against the backup; recheck on 2026-11-06 | live |
 | **An install deletes its preview.** Both installed previews were gone from `%TEMP%\agy-plugin-porter\previews\`. The GitHub preview, never installed, stayed until it was deleted by hand. Previews also expire after an hour. | `%TEMP%\agy-plugin-porter\previews\` | live |
 
+## Changes since the run
+
+These landed after the live run. They're covered by the offline tests on Windows, Linux and macOS, but not live-tested:
+- **Previews moved out of the temp folder.** They're now kept in `%LOCALAPPDATA%\agy-plugin-porter\previews` on Windows and `~/.cache/agy-plugin-porter/previews` elsewhere (or `$XDG_CACHE_HOME`), created readable only by the user. On a multi-user Linux machine, another user could have made `/tmp/agy-plugin-porter` first and changed a preview between the preview and the install. The detector's state file no longer falls back to the temp folder either.
+- **The hook shim runs when its plugin is reached through a symlink.** It used to run only when `process.argv[1]` matched its own URL exactly. Node resolves symlinks in the URL but not in `argv[1]`, so a plugin reached through a link (macOS's `/var`, a linked home or `.gemini`, a Windows junction) exited 0 without running its hook. CI on macOS found it.
+
 ## Changes from the plan
 
 - **No progress stream.** The cockpit's `POST /api/preview` waits for the port to finish instead of streaming progress over SSE. It runs one port at a time (a second gets 409) and shows "Porting…" meanwhile. A pinned GitHub source took a few seconds.
