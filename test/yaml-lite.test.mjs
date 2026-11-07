@@ -67,6 +67,29 @@ test('splitFrontmatter and formatFrontmatter', () => {
   assert.equal(splitFrontmatter(formatFrontmatter({ v: 'true', n: '12' }, '')).data.v, 'true');
 });
 
+test('flow lists and maps can span lines', () => {
+  const parsed = parseYaml(`description: Make a plugin
+allowed-tools:
+  [
+    "Read",
+    "Write", # a comment
+    "Bash(git:*)",
+  ]
+inline: [a,
+  b]
+map: {k: v,
+  n: 2}
+after: kept`);
+  assert.deepEqual(parsed, {
+    description: 'Make a plugin',
+    'allowed-tools': ['Read', 'Write', 'Bash(git:*)'],
+    inline: ['a', 'b'],
+    map: { k: 'v', n: 2 },
+    after: 'kept',
+  });
+  assert.throws(() => parseYaml('tools: [a,\n  b\nnext: x'), /unclosed \[/);
+});
+
 test('bad indentation throws', () => {
   assert.throws(() => parseYaml('a: 1\n  b: 2\nc'), /yaml:/);
 });
