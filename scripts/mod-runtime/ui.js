@@ -13,14 +13,20 @@
   let state = { panes: [], strips: [], commands: [], status: null };
   let active = null;
   let viewId = null;
+  // False while a host that embeds this view (Hangar) says it's hidden.
+  let hostVisible = true;
 
-  // Host theme: theme-change carries themeType (light/dark).
+  // From the parent frame only. theme-change carries themeType (light/dark);
+  // sidecar-visibility is Hangar saying whether it shows this frame.
   window.addEventListener('message', (e) => {
     const parentOrigin = location.ancestorOrigins?.[0];
     if (e.source !== window.parent || !e.origin || e.origin === 'null' || (parentOrigin && parentOrigin !== 'null' && e.origin !== parentOrigin)) return;
     if (e.data?.type === 'theme-change') {
       const t = e.data.payload?.themeType ?? e.data.payload?.theme;
       if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+    } else if (e.data?.type === 'sidecar-visibility' && typeof e.data.payload?.visible === 'boolean') {
+      hostVisible = e.data.payload.visible;
+      report();
     }
   });
 
@@ -46,11 +52,12 @@
   const note = (className, textContent) => Object.assign(document.createElement('div'), { className, textContent });
 
   // Hidden copies (another conversation's frame, Hangar's embedded views) must not
-  // count as a placed pane: report visibilityState plus IntersectionObserver.
+  // count as a placed pane: report visibilityState plus IntersectionObserver, and
+  // Hangar's word, since it can hide its own view with CSS the observer can't see.
   let inViewport = false;
   let reported = null;
   function report() {
-    const visible = document.visibilityState === 'visible' && inViewport;
+    const visible = hostVisible && document.visibilityState === 'visible' && inViewport;
     if (viewId === null || visible === reported) return;
     reported = visible;
     post('/api/visibility', { view: viewId, visible }).catch(() => {});

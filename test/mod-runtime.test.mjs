@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import vm from 'node:vm';
 
 import { AGY_TOOLS, TOOLS } from '../lib/tool-map.mjs';
 import { removeServerInfoIfOurs, writeServerInfo } from '../scripts/mod-runtime/lifecycle.mjs';
@@ -151,3 +152,43 @@ test('PORTER-06: toClaudeCall and overwriteOf unwrap and re-wrap call_mcp_tool a
   assert.deepEqual(eagerOver, { title: 'fixed' });
 });
 
+
+// ui.js in a fake page: it reports the view hidden while Hangar says it hides the frame.
+test('ui.js reports the view hidden while Hangar says its frame is hidden', async () => {
+  const posts = [];
+  const listeners = {};
+  let observe;
+  let events;
+  const el = () => ({ replaceChildren() {}, appendChild() {}, querySelector() {}, set textContent(_) {} });
+  const parent = {};
+  const window = {
+    parent,
+    PorterDraw: { draw() {} },
+    addEventListener: (type, fn) => { listeners[type] = fn; },
+  };
+  Object.assign(window, {
+    window,
+    URLSearchParams,
+    URL,
+    setTimeout,
+    location: { search: '?token=t&conversationId=c1', ancestorOrigins: ['http://127.0.0.1:9'] },
+    document: { visibilityState: 'visible', documentElement: { dataset: {} }, getElementById: el, addEventListener() {} },
+    fetch: async (path, { body }) => { posts.push({ path, ...JSON.parse(body) }); return { json: async () => ({}) }; },
+    IntersectionObserver: class { constructor(cb) { observe = cb; } observe() {} },
+    EventSource: class { constructor() { events = this; } },
+  });
+  vm.runInNewContext(readFileSync(new URL('../scripts/mod-runtime/ui.js', import.meta.url), 'utf8'), window);
+  const seen = () => posts.filter((p) => p.path === '/api/visibility').map((p) => p.visible);
+  const fromParent = (visible, source = parent) => listeners.message({ source, origin: 'http://127.0.0.1:9', data: { type: 'sidecar-visibility', payload: { visible } } });
+
+  events.onmessage({ data: JSON.stringify({ type: 'hello', mod: 'm', view: 'v1' }) });
+  observe([{ isIntersecting: true }]);
+  assert.deepEqual(seen(), [false, true]);
+  fromParent(false);
+  assert.deepEqual(seen(), [false, true, false]);
+  observe([{ isIntersecting: true }]);
+  fromParent(true, {});
+  assert.deepEqual(seen(), [false, true, false], 'still hidden: only the parent frame is heard');
+  fromParent(true);
+  assert.deepEqual(seen(), [false, true, false, true]);
+});
