@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { detect, isUiMod } from '../lib/detector.mjs';
+import { tempDir } from './temp.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 
@@ -34,7 +34,7 @@ test('native plugin dir is reported as antigravity', () => {
 });
 
 test('manifest hooks: path and inline object are both found', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'porter-detect-'));
+  const dir = tempDir('porter-detect-');
   mkdirSync(join(dir, '.claude-plugin'));
   mkdirSync(join(dir, 'config'));
   writeFileSync(join(dir, 'config/extra-hooks.json'), JSON.stringify({ modules: ['./mod.ts'], hooks: { Stop: [] } }));
@@ -49,7 +49,7 @@ test('manifest hooks: path and inline object are both found', () => {
 });
 
 test('unparseable hooks.json is reported, not thrown', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'porter-detect-'));
+  const dir = tempDir('porter-detect-');
   mkdirSync(join(dir, '.claude-plugin'));
   mkdirSync(join(dir, 'hooks'));
   writeFileSync(join(dir, '.claude-plugin/plugin.json'), '{"name":"x"}');

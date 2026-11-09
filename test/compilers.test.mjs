@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { detect } from '../lib/detector.mjs';
@@ -13,16 +12,11 @@ import { compileSkills, slugifyName } from '../lib/skill-compiler.mjs';
 import { parseSourceSpec, removeTree, resolveSource } from '../lib/source.mjs';
 import { auditPlugin, auditText, inferTier, looksRandom } from '../lib/static-auditor.mjs';
 import { splitFrontmatter } from '../lib/yaml-lite.mjs';
+import { removeLater, tempDir } from './temp.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 const emptyReport = () => ({ ported: [], unported: [], warnings: [] });
-const made = [];
-const tmp = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'porter-unit-'));
-  made.push(dir);
-  return dir;
-};
-after(() => { for (const dir of made) removeTree(dir); });
+const tmp = () => tempDir('porter-unit-');
 const write = (dir, rel, text) => {
   mkdirSync(join(dir, rel, '..'), { recursive: true });
   writeFileSync(join(dir, rel), text);
@@ -307,7 +301,7 @@ test('source subPath must stay inside the source', () => {
   const root = tmp();
   mkdirSync(join(root, 'inner'));
   mkdirSync(`${root}-sibling`);
-  made.push(`${root}-sibling`);
+  removeLater(`${root}-sibling`);
   assert.equal(resolveSource(root, { subPath: 'inner' }).dir, join(root, 'inner'));
   assert.throws(() => resolveSource(root, { subPath: '..' }), /no folder/);
   assert.throws(() => resolveSource(root, { subPath: `../${root.split(/[\/]/).pop()}-sibling` }), /no folder/);

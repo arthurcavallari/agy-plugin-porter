@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, cpSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { detect } from '../lib/detector.mjs';
 import { compileHooks, writeHookPort } from '../lib/hook-compiler.mjs';
 import { expandCommand, resolveHookSpawn, runCommand, shouldRun, toSourcePayload, toSourceTool, translateResult } from '../scripts/hook-shim.mjs';
+import { removeLater, tempDir } from './temp.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 
@@ -104,7 +104,7 @@ test('translateResult preserves force_ask decision and toSourceTool unwraps call
 test('resolveHookSpawn uses Git bash on win32 for .sh scripts, shebang scripts and POSIX subshells', () => {
   const prev = process.env.AGY_GIT_BASH;
   process.env.AGY_GIT_BASH = process.execPath;
-  const dir = mkdtempSync(join(tmpdir(), 'porter-shebang-'));
+  const dir = tempDir('porter-shebang-');
   writeFileSync(join(dir, 'session-start'), '#!/usr/bin/env bash\necho ok\n');
   try {
     const spec = resolveHookSpawn('bash "C:/p/hooks/check.sh"', 'win32');
@@ -170,14 +170,14 @@ test('SessionStart, Stop and PostToolUse translation', () => {
 // End to end: port the Claude fixture into a dir whose path has a space, then run
 // the shim the way agy does (cwd = plugin root, payload on stdin).
 function portedClaudeFixture() {
-  const dir = join(mkdtempSync(join(tmpdir(), 'porter-shim-')), 'plugin root');
+  const dir = join(tempDir('porter-shim-'), 'plugin root');
   mkdirSync(dir);
   cpSync(fixture('claude'), dir, { recursive: true });
   writeHookPort(dir, compileHooks(detect(dir).hookSources, { slug: 'fixture-claude' }));
   return dir;
 }
 function runShim(dir, event, hook, payload) {
-  const temp = mkdtempSync(join(tmpdir(), 'porter-shim-tmp-'));
+  const temp = tempDir('porter-shim-tmp-');
   const run = spawnSync(process.execPath, ['scripts/hook-shim.mjs', '--event', event, '--hook', hook], {
     cwd: dir, input: JSON.stringify(payload), encoding: 'utf8', env: { ...process.env, TEMP: temp, TMP: temp, TMPDIR: temp },
   });
@@ -331,7 +331,7 @@ test('PORTER-04: expandCommand quotes paths with spaces and resolveHookSpawn han
   assert.equal(alreadyQuoted, 'node "C:/Users/Jane Doe/.gemini/plugins/my-plugin/scripts/guard.mjs" --flag');
 
   // Script with #!/usr/bin/env node shebang in a directory with spaces
-  const baseDir = mkdtempSync(join(tmpdir(), 'porter space dir '));
+  const baseDir = tempDir('porter space dir ');
   mkdirSync(join(baseDir, 'scripts'), { recursive: true });
   const scriptPath = join(baseDir, 'shebang-hook.mjs');
   writeFileSync(scriptPath, '#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({ decision: "deny", reason: "from-shebang" }));\n');
@@ -356,14 +356,14 @@ test('PORTER-04: expandCommand quotes paths with spaces and resolveHookSpawn han
 // Node resolves symlinks in the main module's URL but not in argv[1]; macOS's
 // tmpdir (/var -> /private/var) and a linked home both hit this.
 test('the shim runs when its plugin is reached through a linked folder', () => {
-  const real = mkdtempSync(join(tmpdir(), 'porter-linked-'));
+  const real = tempDir('porter-linked-');
   mkdirSync(join(real, 'scripts'));
   writeFileSync(join(real, 'hook.mjs'), 'process.stdout.write(JSON.stringify({ decision: "deny", reason: "linked" }));\n');
   writeFileSync(join(real, 'scripts/hook-shim.json'), JSON.stringify({
     hooks: { 'pre-1': { event: 'PreToolUse', sourceEvent: 'PreToolUse', dialect: 'claude', command: 'node hook.mjs' } },
   }));
   cpSync(fileURLToPath(new URL('../scripts/hook-shim.mjs', import.meta.url)), join(real, 'scripts/hook-shim.mjs'));
-  const link = `${real}-link`;
+  const link = removeLater(`${real}-link`);
   symlinkSync(real, link, 'junction');
   const run = spawnSync(process.execPath, [join(link, 'scripts/hook-shim.mjs'), '--event', 'PreToolUse', '--hook', 'pre-1'], {
     cwd: link,

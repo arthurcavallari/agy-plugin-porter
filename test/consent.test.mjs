@@ -1,20 +1,21 @@
 // Previews and consent: a preview ports into a private folder, and an install takes it
 // only with the preview's tier and audit-findings digest handed back.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { createPreview, flagsDigest, installPreview, listPreviews, previewsDir, readPreview } from '../lib/consent.mjs';
+import { tempDir } from './temp.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 const STUB = fileURLToPath(new URL('./agy-stub.mjs', import.meta.url));
 const log = () => readFileSync(process.env.AGY_STUB_LOG, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
 
 before(() => {
-  const tmp = mkdtempSync(join(tmpdir(), 'porter-consent-'));
+  const tmp = tempDir('porter-consent-');
   for (const k of ['TMPDIR', 'TEMP', 'TMP']) process.env[k] = tmp;
   process.env.AGY_PORTER_PREVIEWS_DIR = join(tmp, 'previews');
   process.env.AGY_PORTER_AGY = STUB;
