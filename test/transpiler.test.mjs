@@ -3,7 +3,7 @@
 // those tests (and all validation) skip when agy isn't on PATH.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import { portPackage } from '../lib/index.mjs';
 import { loadEsbuild } from '../lib/mod-transform.mjs';
+import { removeTree } from '../lib/source.mjs';
 import { transpile } from '../lib/transpiler-engine.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
@@ -85,6 +86,28 @@ test('refuses a non-empty out dir unless forced; rejects bad slugs and empty sou
   transpile({ srcDir: fixture('codex'), outDir, force: true });
   assert.throws(() => transpile({ srcDir: fixture('codex'), outDir: out(), slug: 'Bad Slug' }), /invalid slug/);
   assert.throws(() => transpile({ srcDir: mkdtempSync(join(tmpdir(), 'porter-none-')), outDir: out() }), /no plugin found/);
+});
+
+// cpSync keeps a link in a Codex skill as a link to its target, so the work copy
+// can link back into the source. (On Windows, Node 20 keeps a junction as a link;
+// Node 22 and later copy its contents.) Clearing empty folders must not follow it.
+test('clearing empty folders never follows a link out of the work copy', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'porter-link-'));
+  try {
+    const src = join(dir, 'src');
+    cpSync(fixture('codex'), src, { recursive: true });
+    const outside = join(dir, 'outside');
+    mkdirSync(join(outside, 'empty'), { recursive: true });
+    mkdirSync(join(outside, 'nested', 'empty'), { recursive: true });
+    writeFileSync(join(outside, 'keep.txt'), 'keep');
+    symlinkSync(outside, join(src, '.agents/skills/codex-skill/linked'), 'junction');
+
+    transpile({ srcDir: src, outDir: join(dir, 'out') });
+    assert.equal(existsSync(join(outside, 'empty')), true, 'an empty folder behind a link is never removed');
+    assert.equal(existsSync(join(outside, 'nested', 'empty')), true, 'an empty folder behind a link is never removed');
+  } finally {
+    removeTree(dir);
+  }
 });
 
 test('portPackage returns {report, tier}', async () => {
