@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -306,14 +306,43 @@ test('source subPath must stay inside the source', () => {
   assert.throws(() => resolveSource(root, { subPath: `../${root.split(/[\/]/).pop()}-sibling` }), /no folder/);
 });
 
-// A git clone's pack files are read-only, which Node 24's rmSync can't delete on Windows.
-test('removeTree deletes a folder holding read-only files', () => {
-  const root = tmp();
-  write(root, '.git/objects/pack/pack-1.idx', 'x');
-  chmodSync(join(root, '.git/objects/pack/pack-1.idx'), 0o444);
-  removeTree(root);
-  assert.equal(existsSync(root), false);
-  removeTree(root);
+// On Windows, agy-node's (Node 24) rmSync can't delete read-only files, which a
+// git clone's pack files are, and it follows junctions inside the tree and deletes
+// the files behind them.
+test('removeTree deletes read-only files, as in a git clone, without following links', () => {
+  const dir = tmp();
+  const readOnly = ['outside/keep.txt', 'clone/.git/objects/pack/pack-1.idx', 'clone/.git/objects/pack/pack-1.pack', 'lone.txt'];
+  try {
+    const outside = join(dir, 'outside');
+    write(dir, 'outside/keep.txt', 'keep');
+    write(dir, 'outside/writable.txt', 'keep');
+    const clone = join(dir, 'clone');
+    write(dir, 'clone/.git/objects/pack/pack-1.idx', 'x');
+    write(dir, 'clone/.git/objects/pack/pack-1.pack', 'x');
+    write(dir, 'lone.txt', 'x');
+    for (const f of readOnly) chmodSync(join(dir, f), 0o444);
+    symlinkSync(outside, join(clone, 'linked'), 'junction');
+    // With only writable files behind it, Node 24's rmSync deletes them without an error
+    write(dir, 'outside-writable/writable.txt', 'keep');
+    symlinkSync(join(dir, 'outside-writable'), join(clone, 'linked-writable'), 'junction');
+
+    removeTree(clone);
+    assert.equal(existsSync(clone), false);
+    assert.equal(readFileSync(join(outside, 'keep.txt'), 'utf8'), 'keep', 'a linked folder is never entered');
+    assert.equal(readFileSync(join(outside, 'writable.txt'), 'utf8'), 'keep', 'files behind a link are never deleted');
+    assert.equal(statSync(join(outside, 'keep.txt')).mode & 0o200, 0, 'files behind a link stay read-only');
+    assert.equal(readFileSync(join(dir, 'outside-writable/writable.txt'), 'utf8'), 'keep', 'files behind a link are never deleted');
+
+    removeTree(join(dir, 'lone.txt'));
+    assert.equal(existsSync(join(dir, 'lone.txt')), false);
+    removeTree(join(dir, 'lone.txt'));
+  } finally {
+    // So that cleanup works even when removeTree is broken
+    for (const f of readOnly) {
+      try { chmodSync(join(dir, f), 0o666); } catch {}
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('name helpers stay linear on hostile input', () => {
