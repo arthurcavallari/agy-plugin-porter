@@ -25,7 +25,7 @@ npx agy-plugin-porter --source ./my-claude-plugin --out ./ported --validate
 agy plugin install ./ported
 ```
 
-`--source` also takes a GitHub repo pinned to a tag, branch or commit: `owner/repo@<ref>`, plus `--path <subfolder>` for monorepos. `--install` runs `agy plugin install` on the output for you. Restart Antigravity afterwards so it discovers the new plugin directory.
+`--source` also takes a GitHub repo pinned to a tag, branch or commit: `owner/repo@<ref>`, plus `--path <subfolder>` for monorepos. When the subfolder has no license file, the port gets the one at the repository root. `--install` runs `agy plugin install` on the output for you. Restart Antigravity afterwards so it discovers the new plugin directory.
 
 ```
 agy-porter --source <path|owner/repo@ref> [--path <dir>] [--slug <name>] [--out <dir>]

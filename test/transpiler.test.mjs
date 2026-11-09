@@ -3,7 +3,7 @@
 // those tests (and all validation) skip when agy isn't on PATH.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -158,6 +158,67 @@ test('portPackage returns {report, tier}', async () => {
   assert.equal(tier, 'TIER_1_TELEMETRY');
   assert.equal(JSON.parse(readFileSync(join(outDir, 'plugin.json'), 'utf8')).name, 'cursor-rules');
   assert.equal(report.slug, 'cursor-rules');
+});
+
+// A monorepo like trailofbits/skills: a LICENSE at the root and the plugin in
+// plugins/<name>, with no license of its own.
+function monorepo(name) {
+  const root = join(tempDir('porter-monorepo-'), 'repo');
+  cpSync(fixture(name), join(root, 'plugins', name), { recursive: true });
+  writeFileSync(join(root, 'LICENSE'), 'root license\n');
+  return root;
+}
+
+const ROOT_LICENSE = 'LICENSE (from the repository root; the plugin folder has none)';
+
+test('a plugin in a subfolder without a license gets the repository root license', async () => {
+  const root = monorepo('cursor');
+  const outDir = out();
+  const { report } = await portPackage({ source: root, path: 'plugins/cursor', outDir });
+  assert.equal(readFileSync(join(outDir, 'LICENSE'), 'utf8'), 'root license\n');
+  assert.ok(report.ported.includes(ROOT_LICENSE), JSON.stringify(report.ported));
+});
+
+test("a plugin's own license wins over the repository root license", async () => {
+  const root = monorepo('cursor');
+  writeFileSync(join(root, 'plugins', 'cursor', 'license.md'), 'own license\n');
+  const outDir = out();
+  const { report } = await portPackage({ source: root, path: 'plugins/cursor', outDir });
+  assert.equal(readFileSync(join(outDir, 'license.md'), 'utf8'), 'own license\n');
+  assert.equal(existsSync(join(outDir, 'LICENSE')), false, "the root license isn't copied");
+  assert.ok(report.ported.includes('license.md'), JSON.stringify(report.ported));
+  assert.ok(!report.ported.includes(ROOT_LICENSE));
+});
+
+test('a Claude plugin in a subfolder gets the root license, and keeps its own when it has one', { skip: !hasAgy && 'agy not on PATH' }, async () => {
+  const root = monorepo('claude');
+  const outDir = out();
+  const { report } = await portPackage({ source: root, path: 'plugins/claude', outDir });
+  assert.equal(readFileSync(join(outDir, 'LICENSE'), 'utf8'), 'root license\n');
+  assert.ok(report.ported.includes(ROOT_LICENSE), JSON.stringify(report.ported));
+
+  writeFileSync(join(root, 'plugins', 'claude', 'LICENSE.txt'), 'own license\n');
+  const ownOut = out();
+  await portPackage({ source: root, path: 'plugins/claude', outDir: ownOut });
+  assert.equal(readFileSync(join(ownOut, 'LICENSE.txt'), 'utf8'), 'own license\n');
+  assert.equal(existsSync(join(ownOut, 'LICENSE')), false, "the root license isn't copied");
+});
+
+test('a root license that links outside the source is never read', async (t) => {
+  const root = monorepo('cursor');
+  rmSync(join(root, 'LICENSE'));
+  const outside = join(root, '..', 'outside.txt');
+  writeFileSync(outside, 'outside\n');
+  try {
+    symlinkSync(outside, join(root, 'LICENSE'), 'file');
+  } catch (err) {
+    if (err.code === 'EPERM') return t.skip('no permission to make a file symlink');
+    throw err;
+  }
+  const outDir = out();
+  const { report } = await portPackage({ source: root, path: 'plugins/cursor', outDir });
+  assert.equal(existsSync(join(outDir, 'LICENSE')), false);
+  assert.ok(!report.ported.includes(ROOT_LICENSE));
 });
 
 test('CLI: --json report, usage errors', () => {
