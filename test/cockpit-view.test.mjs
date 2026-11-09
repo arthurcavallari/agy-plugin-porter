@@ -90,7 +90,15 @@ test('a preview shows the report as kit badges and sections; Install asks first,
   assert.ok($('status').classList.contains('is-success'));
   assert.match($('status').textContent, /Installed review/);
   assert.equal(report.hidden, true);
+  assert.equal($('install').disabled, false, 'the Install button is reset after a successful install');
+  assert.equal($('install').textContent, 'Install…');
   assert.ok($('recent').querySelector('.cockpit-row'), 'the preview is listed under Recent previews');
+});
+
+test("hidden cards stay hidden: ui.css overrides the kit cards' display:flex for [hidden]", () => {
+  // linkedom applies no CSS, so check the rule itself; without it a hidden report drew as an empty bar (seen live)
+  assert.match(readFileSync(`${COCKPIT}ui.css`, 'utf8'), /\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/);
+  assert.match(readFileSync(`${COCKPIT}ui.html`, 'utf8'), /<section id="report" class="agy-card[^"]*"[^>]*hidden>/);
 });
 
 test('an unvalidated port cannot be installed', async () => {
