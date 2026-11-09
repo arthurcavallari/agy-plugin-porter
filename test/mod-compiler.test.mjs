@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
@@ -34,6 +34,28 @@ test('fixture: compiles into a sidecar with forwarding hooks, tier 3', tsx, () =
   assert.match(code, /from "\.\.\/\.\.\/claude-code\.mjs"/);
   assert.doesNotMatch(code, /import type|DeniedCount/);
   assert.deepEqual(inferTier(pluginDir).tier, 'TIER_3_AGENT_CONTROL');
+});
+
+// A mod is compiled from what it reads, so a module reached through a link (or
+// "../") outside the plugin would carry that file's code into the port.
+test('a mod module outside the plugin is refused', () => {
+  const dir = tempDir('porter-mod-link-');
+  const src = join(dir, 'src');
+  mkdirSync(join(dir, 'outside'));
+  writeFileSync(join(dir, 'outside', 'mod.js'), 'export default function register() {}\n');
+  mkdirSync(join(src, '.claude-plugin'), { recursive: true });
+  writeFileSync(join(src, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'linked-mod' }));
+  mkdirSync(join(src, 'hooks'));
+  writeFileSync(join(src, 'hooks', 'hooks.json'), JSON.stringify({ modules: ['./linked/mod.js', '../../outside/mod.js'] }));
+  symlinkSync(join(dir, 'outside'), join(src, 'hooks', 'linked'), 'junction');
+
+  const { pluginDir, report } = compileSource(src);
+  assert.deepEqual(report.ported, []);
+  assert.deepEqual(report.unported, [
+    { item: 'ui-mod:hooks/linked/mod.js', reason: "can't read the mod: hooks/linked/mod.js is outside the plugin" },
+    { item: 'ui-mod:../outside/mod.js', reason: "can't read the mod: ../outside/mod.js is outside the plugin" },
+  ]);
+  assert.equal(existsSync(join(pluginDir, 'sidecars')), false);
 });
 
 test('negative fixture: a transcript-only mod is refused and nothing is emitted', () => {

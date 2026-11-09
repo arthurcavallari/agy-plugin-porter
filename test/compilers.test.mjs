@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { detect } from '../lib/detector.mjs';
+import { compileHooks } from '../lib/hook-compiler.mjs';
 import { buildManifest, fixMcpServers, sanitizeManifest } from '../lib/manifest-sanitizer.mjs';
 import { compileModes, mapClaudeModel, mapClaudeTools, mapRooGroups } from '../lib/mode-compiler.mjs';
 import { compileRules, cursorTrigger } from '../lib/rules-compiler.mjs';
@@ -407,6 +408,31 @@ test('copyTree replaces links inside the source with copies and leaves the rest 
   copyTree(join(src, 'sub'), skill, { roots: [src] });
   assert.equal(readFileSync(join(skill, 'b.txt'), 'utf8'), 'b');
   assert.deepEqual(linksIn(skill), []);
+});
+
+// A path a plugin's own config names (a manifest's hooks or mcpServers, Gemini's
+// contextFileName) is joined onto the source, so "../" could reach outside it.
+test('paths a plugin names that lead outside it are reported, not read', () => {
+  const dir = tmp();
+  const src = join(dir, 'src');
+  write(dir, 'hooks.json', JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo outside' }] }] } }));
+  write(dir, 'servers.json', JSON.stringify({ mcpServers: { outside: { command: 'node' } } }));
+  write(dir, 'notes.md', 'notes from outside\n');
+  write(src, '.claude-plugin/plugin.json', JSON.stringify({ name: 'p', hooks: '../hooks.json', mcpServers: '../servers.json' }));
+  write(src, 'gemini-extension.json', JSON.stringify({ name: 'p', contextFileName: '../notes.md' }));
+
+  const hooks = compileHooks(detect(src).hookSources, { slug: 'p' });
+  assert.deepEqual(hooks.report.unported, [{ item: 'hooks:../hooks.json', reason: "it's outside the plugin" }]);
+
+  const out = join(dir, 'out');
+  mkdirSync(out);
+  const manifest = sanitizeManifest(out, { srcDir: src, ecosystems: ['claude'], slug: 'p' });
+  assert.ok(manifest.unported.some((u) => u.item === 'mcp:../servers.json' && /outside the plugin/.test(u.reason)), JSON.stringify(manifest.unported));
+  assert.equal(existsSync(join(out, 'mcp_config.json')), false);
+
+  const rules = compileRules(out, { srcDir: src, ecosystems: ['gemini'] });
+  assert.deepEqual(rules.unported, [{ item: '../notes.md', reason: "it's outside the plugin" }]);
+  assert.equal(existsSync(join(out, 'rules', 'AGENTS.md')), false);
 });
 
 test('name helpers stay linear on hostile input', () => {

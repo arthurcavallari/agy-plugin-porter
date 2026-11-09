@@ -143,6 +143,15 @@ test('a native plugin ports without links', portsWithoutLinks('agy-probe', 'scri
 test('a Codex skill ports without links', portsWithoutLinks('codex', '.agents/skills/codex-skill', '.agents/skills/codex-skill', { outAt: 'skills/codex-skill' }));
 test('a Claude plugin staged by agy ports without links', { skip: !hasAgy && 'agy not on PATH' }, portsWithoutLinks('claude', 'scripts', 'scripts'));
 
+test('a source whose plugin is all behind a link outside it ports nothing', () => {
+  const dir = tempDir('porter-links-');
+  mkdirSync(join(dir, 'outside', 's'), { recursive: true });
+  writeFileSync(join(dir, 'outside', 's', 'SKILL.md'), '---\nname: s\ndescription: d\n---\nbody\n');
+  mkdirSync(join(dir, 'src', '.agents'), { recursive: true });
+  symlinkSync(join(dir, 'outside'), join(dir, 'src', '.agents', 'skills'), 'junction');
+  assert.throws(() => transpile({ srcDir: join(dir, 'src'), outDir: join(dir, 'out') }), /once the links leading out of it were left out/);
+});
+
 test('portPackage returns {report, tier}', async () => {
   const outDir = out();
   const { report, tier } = await portPackage({ srcDir: fixture('cursor'), outDir, slug: 'cursor-rules' });
