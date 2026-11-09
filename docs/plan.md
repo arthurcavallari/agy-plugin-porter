@@ -206,6 +206,45 @@ Built as **one plugin**, with the cockpit inside it at `sidecars/cockpit/` (corr
 - Add the three Wave-1 P0 ports, each pinned to an upstream SHA: `trailofbits-security` (`trailofbits/skills`, Claude), `anthropic-core-workflows` (`anthropics/claude-code` `plugins/*`, Claude) and `roo-boomerang-modes` (Roo modes). The `anthropics/claude-code` monorepo needs `release.path` per plugin, so the same field covers it.
 - Each entry must port with zero unported *hooks* (unported commands are acceptable) and pass `agy plugin validate`. If one doesn't, it isn't listed.
 
+### Phase 5 outcome (2026-11-09, Antigravity 2.29.0)
+Hangar's registry went from one package to 16: the porter and 14 ports. It's published from Hangar PRs #17 and #18.
+
+**What changed from the plan:**
+- **The Wave-1 "plugins" are bundles.** Hangar ports one upstream folder per entry, so each bundle became one entry per plugin, named `<upstream>-<plugin>` (for example `tob-differential-review`).
+- **The upstreams and licenses differ from the blueprints:**
+  - `anthropics/claude-code` is "All rights reserved", and its `plugins/` folder is now empty. The plugins live in `anthropics/claude-plugins-official` (Apache-2.0, with a LICENSE in each plugin folder).
+  - `trailofbits/skills` is CC-BY-SA-4.0, not Apache or MIT.
+- **Registry entries got `license` and `homepage` fields.** Hangar's validator checks them, and Discover shows them.
+- **The porter entry** points at the v0.2.1 release tarball, with its sha256. It's the build's own tier, Tier 3.
+
+**Listed** (static: each one ported with zero unported hooks and passed `agy plugin validate` at its pinned commit):
+
+| Upstream (pin) | Entries |
+| :-- | :-- |
+| `trailofbits/skills` @ `e4dd0bb5` | `differential-review`, `sharp-edges`, `insecure-defaults`, `static-analysis`, `variant-analysis`, `semgrep-rule-creator`, `burpsuite-project-parser`, `firebase-apk-scanner` |
+| `anthropics/claude-plugins-official` @ `0412be76` | `feature-dev`, `pr-review-toolkit`, `commit-commands`, `plugin-dev`, `skill-creator`, `code-review` |
+
+**Left out:**
+- **RooFlow** (`GreatScottyMac/RooFlow`), the closest match to "Roo boomerang modes". Its modes are stubs. Their real instructions are `.roo/system-prompt-*` overrides, which an agy agent can't carry.
+- **`fp-check`, `gh-cli`, `security-guidance` and `hookify`.** They use hooks agy has no event for (`SubagentStop`, `SessionEnd`, `UserPromptSubmit`).
+
+**Live, on the real profile:**
+- **Installs through Discover:** the porter (the tarball path), `tob-differential-review` and `anthropic-commit-commands`.
+  - Each showed the consent dialog, even `commit-commands` at Tier 1 with no audit findings.
+  - Each loaded without a restart and appeared in **Customizations > Plugins**.
+  - The `differential-review` skill loaded with its reference files and reviewed a commit.
+- **Uninstalls through Hangar:** all three, with no errors, after the fixes below. A diff against the backup taken before the check showed nothing left of the three, apart from the files Antigravity keeps for any removed plugin.
+
+**Fixed during the run** (all rechecked live):
+- **Node 24's `rmSync` on Windows** can't delete a git clone's read-only files, and it follows directory junctions inside the tree, deleting the files behind them. Hangar's port preview failed on Differential Review with `EPERM`. Fixed in `antigravity-sidecar-kit` PR #6, whose `removeLinkOrDir` now walks the tree itself. The porter's `removeTree` already handled read-only files (Phase 4).
+- **The Language Server refuses `DeletePlugin` to sidecars** ("not allowed for principal sidecar"). This had only been checked statically. Hangar now uninstalls with `agy plugin uninstall`, the same CLI it installs with (Hangar PR #19).
+- **A running plugin sidecar holds its folder on Windows.** agy then failed halfway through deleting the porter, because its cockpit sidecar was still running. Hangar now switches the plugin off, stops its sidecars and waits for them before running agy.
+
+**Found during the run, not fixed:**
+- **Ports from a subfolder carry no license** when the upstream keeps it at the repository root. The Trail of Bits ports install without one, though their CC-BY-SA-4.0 license asks for attribution. The porter could copy the root license into a port that has none of its own.
+- **The audit flags a false positive in `tob-differential-review`:** a medium "high-entropy" finding on an example file name in `reporting.md`.
+- **agy leaves an empty data folder for some plugins.** It removed the data folders of two plugins, but `plugin_data\tob-differential-review\` stayed, empty.
+
 ## Critical files
 - This repo, `agy-plugin-porter` (everything above).
 - Hangar: `lib/plugin-installer.mjs` (new), `lib/package-installer.mjs` (export the shared helpers), `lib/state-orchestrator.mjs`, `lib/registry-catalog.mjs` (handle `kind`/`port` in catalog merge and updates), `scripts/validate-registry.mjs`, `server.mjs`, `ui/components/marketplace-panes.js`, `ui/components/extensions-tab.js`, `registry.json`, `package.json`.
