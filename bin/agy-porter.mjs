@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // agy-porter --source <path|owner/repo@ref> [--path <dir>] [--slug <s>] [--out <dir>]
 //            [--force] [--validate] [--install] [--json]
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { portPackage } from '../lib/index.mjs';
+import { removeTree } from '../lib/source.mjs';
 import { spawnAgy } from '../lib/transpiler-engine.mjs';
 
 const USAGE = `Usage: agy-porter --source <path|owner/repo@ref> [options]
@@ -84,7 +85,7 @@ async function main() {
     console.error(`agy-porter: ${err.message}`);
     return 1;
   } finally {
-    if (!opts.out) rmSync(outDir, { recursive: true, force: true });
+    if (!opts.out) removeTree(outDir);
   }
 }
 
