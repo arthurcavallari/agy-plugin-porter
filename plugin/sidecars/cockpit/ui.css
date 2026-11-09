@@ -8,7 +8,10 @@ body {
   font-size: var(--text-sm, 0.875rem);
 }
 
-.hidden { display: none !important; }
+/* The kit's cards are display:flex, which beats the hidden attribute's UA rule (seen live: a hidden report
+   card still drew as an empty bar) */
+.hidden,
+[hidden] { display: none !important; }
 
 .cockpit {
   display: flex;

@@ -119,8 +119,9 @@
       status(`Installed ${r.slug}. Switch it off in Customizations > Plugins before uninstalling it.`, 'is-success');
       $('report').hidden = true;
     } catch (err) {
-      busy($('install'), '');
       status(err.message, 'is-error');
+    } finally {
+      busy($('install'), '');
     }
     refresh();
   }
