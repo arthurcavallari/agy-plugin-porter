@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,7 @@ import { buildManifest, fixMcpServers, sanitizeManifest } from '../lib/manifest-
 import { compileModes, mapClaudeModel, mapClaudeTools, mapRooGroups } from '../lib/mode-compiler.mjs';
 import { compileRules, cursorTrigger } from '../lib/rules-compiler.mjs';
 import { compileSkills, slugifyName } from '../lib/skill-compiler.mjs';
-import { parseSourceSpec, removeTree, resolveSource } from '../lib/source.mjs';
+import { copyTree, parseSourceSpec, removeTree, resolveSource } from '../lib/source.mjs';
 import { auditPlugin, auditText, inferTier, looksRandom } from '../lib/static-auditor.mjs';
 import { splitFrontmatter } from '../lib/yaml-lite.mjs';
 import { removeLater, tempDir } from './temp.mjs';
@@ -344,6 +344,69 @@ test('removeTree deletes read-only files, as in a git clone, without following l
     }
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// Every link under dir, relative to it.
+const linksIn = (dir, rel = '') => readdirSync(join(dir, rel)).flatMap((name) => {
+  const path = rel ? `${rel}/${name}` : name;
+  const stat = lstatSync(join(dir, path));
+  if (stat.isSymbolicLink()) return [path];
+  return stat.isDirectory() ? linksIn(dir, path) : [];
+});
+// A file symlink needs Developer Mode on Windows; junctions (folder links) don't.
+const fileLink = (target, path) => {
+  try {
+    symlinkSync(target, path, 'file');
+    return true;
+  } catch (err) {
+    if (err.code === 'EPERM' && process.platform === 'win32') return false;
+    throw err;
+  }
+};
+
+test('copyTree replaces links inside the source with copies and leaves the rest out', () => {
+  const dir = tmp();
+  const src = join(dir, 'src');
+  write(src, 'a.txt', 'a');
+  write(src, 'sub/b.txt', 'b');
+  write(src, 'run.sh', '#!/bin/sh\n');
+  chmodSync(join(src, 'run.sh'), 0o755);
+  write(dir, 'outside/secret.txt', 'secret');
+  write(dir, 'gone/x.txt', 'x');
+  symlinkSync(join(src, 'sub'), join(src, 'inside'), 'junction');
+  symlinkSync(join(dir, 'outside'), join(src, 'out'), 'junction');
+  symlinkSync(src, join(src, 'sub', 'root'), 'junction');
+  symlinkSync(join(dir, 'gone'), join(src, 'dangling'), 'junction');
+  rmSync(join(dir, 'gone'), { recursive: true });
+  const files = fileLink(join(src, 'a.txt'), join(src, 'a-link.txt')) && fileLink(join(dir, 'outside', 'secret.txt'), join(src, 'secret.txt'));
+
+  const dest = join(dir, 'dest');
+  const left = copyTree(src, dest);
+  assert.deepEqual(linksIn(dest), [], 'the copy holds no links');
+  assert.equal(readFileSync(join(dest, 'inside', 'b.txt'), 'utf8'), 'b', 'a link to a folder inside is copied');
+  assert.equal(existsSync(join(dest, 'out')), false);
+  assert.equal(existsSync(join(dest, 'dangling')), false);
+  assert.equal(existsSync(join(dest, 'sub', 'root')), false, 'a link to a folder it sits in would copy forever');
+  assert.equal(existsSync(join(dest, 'inside', 'root')), false);
+  if (process.platform !== 'win32') assert.equal(statSync(join(dest, 'run.sh')).mode & 0o777, 0o755, 'file modes are kept');
+  const expected = [
+    { path: 'dangling', reason: 'it links to nothing' },
+    { path: 'inside/root', reason: 'it links to a folder it sits in' },
+    { path: 'out', reason: 'it links outside the source' },
+    { path: 'sub/root', reason: 'it links to a folder it sits in' },
+  ];
+  if (files) {
+    assert.equal(readFileSync(join(dest, 'a-link.txt'), 'utf8'), 'a', 'a link to a file inside is copied');
+    assert.equal(existsSync(join(dest, 'secret.txt')), false);
+    expected.push({ path: 'secret.txt', reason: 'it links outside the source' });
+  }
+  assert.deepEqual(left.sort((x, y) => x.path.localeCompare(y.path)), expected.sort((x, y) => x.path.localeCompare(y.path)));
+
+  // A wider root lets a link reach a sibling of the copied folder.
+  const skill = join(dir, 'skill');
+  copyTree(join(src, 'sub'), skill, { roots: [src] });
+  assert.equal(readFileSync(join(skill, 'b.txt'), 'utf8'), 'b');
+  assert.deepEqual(linksIn(skill), []);
 });
 
 test('name helpers stay linear on hostile input', () => {

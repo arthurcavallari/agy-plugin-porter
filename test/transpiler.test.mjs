@@ -3,7 +3,7 @@
 // those tests (and all validation) skip when agy isn't on PATH.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -104,6 +104,44 @@ test('clearing empty folders never follows a link out of the work copy', () => {
   assert.equal(existsSync(join(outside, 'empty')), true, 'an empty folder behind a link is never removed');
   assert.equal(existsSync(join(outside, 'nested', 'empty')), true, 'an empty folder behind a link is never removed');
 });
+
+// Every link under dir, relative to it.
+const linksIn = (dir, rel = '') => readdirSync(join(dir, rel)).flatMap((name) => {
+  const path = rel ? `${rel}/${name}` : name;
+  const stat = lstatSync(join(dir, path));
+  if (stat.isSymbolicLink()) return [path];
+  return stat.isDirectory() ? linksIn(dir, path) : [];
+});
+
+// A copy of a fixture with two folder links in `at`: one to a folder elsewhere in
+// the source, one to a folder outside it.
+function linkedSource(name, at) {
+  const dir = tempDir('porter-links-');
+  const src = join(dir, 'src');
+  cpSync(fixture(name), src, { recursive: true });
+  mkdirSync(join(src, 'shared'));
+  writeFileSync(join(src, 'shared', 'notes.md'), 'shared notes\n');
+  mkdirSync(join(dir, 'outside'));
+  writeFileSync(join(dir, 'outside', 'secret.txt'), 'secret\n');
+  mkdirSync(join(src, at), { recursive: true });
+  symlinkSync(join(src, 'shared'), join(src, at, 'shared'), 'junction');
+  symlinkSync(join(dir, 'outside'), join(src, at, 'outside'), 'junction');
+  return { src, outDir: join(dir, 'out') };
+}
+
+const portsWithoutLinks = (name, at, unportedAt, opts = {}) => () => {
+  const { src, outDir } = linkedSource(name, at);
+  const report = transpile({ srcDir: src, outDir, ...opts });
+  assert.deepEqual(linksIn(outDir), [], 'the port holds no links');
+  const out = (opts.outAt ?? at);
+  assert.equal(readFileSync(join(outDir, out, 'shared', 'notes.md'), 'utf8'), 'shared notes\n', 'a link inside the source becomes a copy');
+  assert.equal(existsSync(join(outDir, out, 'outside')), false, 'a link outside the source is left out');
+  assert.ok(report.unported.some((u) => u.item === `${unportedAt}/outside` && u.reason === 'it links outside the source'), JSON.stringify(report.unported));
+};
+
+test('a native plugin ports without links', portsWithoutLinks('agy-probe', 'scripts', 'scripts'));
+test('a Codex skill ports without links', portsWithoutLinks('codex', '.agents/skills/codex-skill', '.agents/skills/codex-skill', { outAt: 'skills/codex-skill' }));
+test('a Claude plugin staged by agy ports without links', { skip: !hasAgy && 'agy not on PATH' }, portsWithoutLinks('claude', 'scripts', 'scripts'));
 
 test('portPackage returns {report, tier}', async () => {
   const outDir = out();
