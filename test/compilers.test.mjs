@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { detect } from '../lib/detector.mjs';
@@ -16,7 +16,13 @@ import { splitFrontmatter } from '../lib/yaml-lite.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 const emptyReport = () => ({ ported: [], unported: [], warnings: [] });
-const tmp = () => mkdtempSync(join(tmpdir(), 'porter-unit-'));
+const made = [];
+const tmp = () => {
+  const dir = mkdtempSync(join(tmpdir(), 'porter-unit-'));
+  made.push(dir);
+  return dir;
+};
+after(() => { for (const dir of made) removeTree(dir); });
 const write = (dir, rel, text) => {
   mkdirSync(join(dir, rel, '..'), { recursive: true });
   writeFileSync(join(dir, rel), text);
@@ -301,6 +307,7 @@ test('source subPath must stay inside the source', () => {
   const root = tmp();
   mkdirSync(join(root, 'inner'));
   mkdirSync(`${root}-sibling`);
+  made.push(`${root}-sibling`);
   assert.equal(resolveSource(root, { subPath: 'inner' }).dir, join(root, 'inner'));
   assert.throws(() => resolveSource(root, { subPath: '..' }), /no folder/);
   assert.throws(() => resolveSource(root, { subPath: `../${root.split(/[\/]/).pop()}-sibling` }), /no folder/);
