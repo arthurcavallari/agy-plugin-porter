@@ -61,6 +61,8 @@ Nothing is dropped silently.
 | Codex `.agents/skills` | Skills |
 | Claude Code UI mods (`hooks.json` with `modules`) | A plugin sidecar per mod, with its pane in Antigravity's side panel. See [UI mods](#ui-mods). |
 
+A port holds no symlinks or junctions. A link to a file or folder inside the source becomes a copy of it. A link to anything outside the source, a link to nothing, and a link to a folder it sits in are left out and reported unported.
+
 ### The hook shim
 
 agy's hook contract differs from Claude Code's and Gemini CLI's: camelCase payloads, a JSON decision on stdout, and fail-closed on any nonzero exit. The shim ships inside each ported plugin and bridges the two:
