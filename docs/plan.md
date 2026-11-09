@@ -240,10 +240,29 @@ Hangar's registry went from one package to 16: the porter and 14 ports. It's pub
 - **The Language Server refuses `DeletePlugin` to sidecars** ("not allowed for principal sidecar"). This had only been checked statically. Hangar now uninstalls with `agy plugin uninstall`, the same CLI it installs with (Hangar PR #19).
 - **A running plugin sidecar holds its folder on Windows.** agy then failed halfway through deleting the porter, because its cockpit sidecar was still running. Hangar now switches the plugin off, stops its sidecars and waits for them before running agy.
 
-**Found during the run, not fixed:**
-- **Ports from a subfolder carry no license** when the upstream keeps it at the repository root. The Trail of Bits ports install without one, though their CC-BY-SA-4.0 license asks for attribution. The porter could copy the root license into a port that has none of its own.
-- **The audit flags a false positive in `tob-differential-review`:** a medium "high-entropy" finding on an example file name in `reporting.md`.
-- **agy leaves an empty data folder for some plugins.** It removed the data folders of two plugins, but `plugin_data\tob-differential-review\` stayed, empty.
+**Found during the run:**
+- **Ports from a subfolder carried no license** when the upstream keeps it at the repository root. The Trail of Bits ports installed without one, though their CC-BY-SA-4.0 license asks for attribution. **Fixed in 0.2.2 (#15):** the porter copies the root license into a port that has none of its own.
+- **The audit flags a false positive in `tob-differential-review`:** a medium "high-entropy" finding on an example file name in `reporting.md`. Not fixed.
+- **agy leaves an empty data folder for some plugins.** It removed the data folders of two plugins, but `plugin_data\tob-differential-review\` stayed, empty. Not fixed; agy's behaviour.
+
+### After Phase 5 (2026-11-09 and 10, Antigravity 2.29.0)
+Putting the seeded registry into use found more problems with replacing a running plugin. All were fixed and released, and each was rechecked live.
+
+- **Auto-update broke a fresh install.** Hangar installed porter 0.2.1 from Discover. Six seconds later, auto-update moved it to 0.2.2 over its running cockpit, agy failed halfway, and the porter was left as an empty `sidecars\cockpit`. The failure was silent, and the card said **Restart to load**. Hangar 1.5.1 (Hangar #21) fixed three things:
+  - it stops the plugin before replacing it, as for an uninstall
+  - it records a failed auto-update on the plugin's card
+  - it shows an empty plugin folder as **Unfinished**
+- **A plugin's MCP server holds its root folder.** The Language Server starts stdio MCP servers with their `cwd` at the plugin root. Switching the plugin off doesn't stop them; the next `RefreshMcpServers` does. Hangar's stop step now switches the plugin off, refreshes MCP servers, and waits for both its sidecars and its MCP servers (Hangar #21, in 1.5.1).
+- **`ManageSidecar` is refused for a plugin's sidecars** ("enable or disable the plugin instead"). Hangar's per-sidecar calls never worked, and its sidecar switch threw after the plugin switch had already worked. Hangar 1.5.2 (Hangar #23) switches plugin sidecars only through the plugin entry. `ToggleMcpServer` is no help for plugin servers either: it only knows the user's own `mcp_config.json`.
+- **Auto-update ran plugin updates with the old Hangar.** `runAutoUpdates` updated plugins before Hangar itself. Hangar 1.5.3 (Hangar #24) holds plugin updates while a Hangar update is pending. Hangars older than 1.5.1 that are already installed keep the old order.
+- **The cockpit is rebuilt on `antigravity-sidecar-kit`** (0.3.0, #17). It uses the kit's native components and the host theme, with an inline consent bar instead of the dialog. The build bundles the kit into the plugin's `node_modules`. The styling comes from reverse-engineering Antigravity's own UI: it ships as a ZIP embedded in `language_server.exe`, which the Language Server serves to the window. The local reference lives in `~/IdeaProjects/antigravity-rea` and isn't published. Sidecar-kit 1.5.2 added the text field it uses.
+- **Releases:**
+  - porter 0.2.2 and 0.3.0
+  - sidecar-kit 1.5.1 (the `rmSync` fix) and 1.5.2
+  - Hangar 1.5.0 to 1.5.3
+
+  The registry lists porter 0.3.0.
+- **The end-to-end check:** after the registry moved to 0.3.0, Hangar auto-updated the installed porter from 0.2.2 while its cockpit and MCP server ran. Both came back as new processes, with no `updateError`.
 
 ## Critical files
 - This repo, `agy-plugin-porter` (everything above).
