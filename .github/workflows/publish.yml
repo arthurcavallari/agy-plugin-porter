@@ -122,6 +122,8 @@ jobs:
               exit 1
             fi
           fi
+      # The kit (bundled into the plugin) and linkedom are devDependencies; the tests and the plugin build need them
+      - run: npm install --no-audit --no-fund --no-package-lock
       - run: npm test
       - run: npm run test:pack
       - name: Dry run finished
