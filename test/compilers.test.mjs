@@ -10,7 +10,7 @@ import { buildManifest, fixMcpServers, sanitizeManifest } from '../lib/manifest-
 import { compileModes, mapClaudeModel, mapClaudeTools, mapRooGroups } from '../lib/mode-compiler.mjs';
 import { compileRules, cursorTrigger } from '../lib/rules-compiler.mjs';
 import { compileSkills, slugifyName } from '../lib/skill-compiler.mjs';
-import { copyTree, parseSourceSpec, removeTree, resolveSource } from '../lib/source.mjs';
+import { copyTree, findLicense, parseSourceSpec, removeTree, resolveSource } from '../lib/source.mjs';
 import { auditPlugin, auditText, inferTier, looksRandom } from '../lib/static-auditor.mjs';
 import { splitFrontmatter } from '../lib/yaml-lite.mjs';
 import { removeLater, tempDir } from './temp.mjs';
@@ -304,8 +304,22 @@ test('source subPath must stay inside the source', () => {
   mkdirSync(`${root}-sibling`);
   removeLater(`${root}-sibling`);
   assert.equal(resolveSource(root, { subPath: 'inner' }).dir, join(root, 'inner'));
+  assert.equal(resolveSource(root, { subPath: 'inner' }).root, root);
   assert.throws(() => resolveSource(root, { subPath: '..' }), /no folder/);
   assert.throws(() => resolveSource(root, { subPath: `../${root.split(/[\/]/).pop()}-sibling` }), /no folder/);
+});
+
+test('findLicense: LICENSE, LICENSE.md, LICENSE.txt or COPYING in any case, files only', () => {
+  const dir = tmp();
+  assert.equal(findLicense(dir), null);
+  mkdirSync(join(dir, 'LICENSE'));
+  writeFileSync(join(dir, 'LICENSE-NOTES.md'), 'not a license file name');
+  assert.equal(findLicense(dir), null, 'a folder named LICENSE and other names are not license files');
+  for (const name of ['Copying', 'license.TXT', 'License.md']) {
+    const other = tmp();
+    writeFileSync(join(other, name), 'text');
+    assert.equal(findLicense(other), name);
+  }
 });
 
 // On Windows, agy-node's (Node 24) rmSync can't delete read-only files, which a
