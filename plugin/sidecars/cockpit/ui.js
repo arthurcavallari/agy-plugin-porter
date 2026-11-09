@@ -157,12 +157,14 @@
   }
 
   $('fields').innerHTML = ui.renderField({
-    id: 'source', label: 'Source', required: true, attrs: 'autocomplete="off" spellcheck="false"',
+    id: 'source', label: 'Source', required: true, placeholder: 'owner/repo@v1.0.0', attrs: 'autocomplete="off" spellcheck="false"',
     help: 'A folder path, or a GitHub repo as owner/repo@tag. Pin a tag or commit.',
   }) + '<div class="cockpit-row-2">' + ui.renderField({
-    id: 'path', label: 'Path', help: 'Optional: the subfolder that holds the plugin.', attrs: 'autocomplete="off" spellcheck="false"',
+    id: 'path', label: 'Path', placeholder: 'plugins/code-review', attrs: 'autocomplete="off" spellcheck="false"',
+    help: 'Optional: the subfolder that holds the plugin.',
   }) + ui.renderField({
-    id: 'slug', label: 'Name', help: "Optional: the plugin's name in Antigravity.", attrs: 'autocomplete="off" spellcheck="false"',
+    id: 'slug', label: 'Name', placeholder: "Defaults to the plugin's own name", attrs: 'autocomplete="off" spellcheck="false"',
+    help: "Optional: the plugin's name in Antigravity.",
   }) + '</div>';
 
   $('form').addEventListener('submit', async (e) => {
