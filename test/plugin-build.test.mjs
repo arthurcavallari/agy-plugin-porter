@@ -41,6 +41,17 @@ test('build: plugin/ plus copies of lib/, bin/ and the runtime; 7-key manifest a
   assert.equal(tier, 'TIER_3_AGENT_CONTROL');
 });
 
+test('build: bundles antigravity-sidecar-kit for the cockpit, since agy runs no npm install', () => {
+  const { dir } = buildPlugin({ outRoot: tempDir('porter-build-'), tar: false });
+  const kit = join(dir, 'node_modules', 'antigravity-sidecar-kit');
+  assert.equal(json(kit, 'package.json').name, 'antigravity-sidecar-kit');
+  for (const f of ['lib/ui.mjs', 'lib/shell.mjs', 'lib/theme.mjs', 'lib/ui/controls/controls.css']) {
+    assert.ok(existsSync(join(kit, f)), `${f} missing from the bundled kit`);
+  }
+  assert.equal(existsSync(join(kit, 'test')), false, 'the kit is bundled without its tests');
+  assert.equal(existsSync(join(kit, 'node_modules')), false);
+});
+
 test('build: the tarball holds one top folder, with its sha256 beside it', () => {
   const outRoot = tempDir('porter-build-');
   const { tarball, sha256 } = buildPlugin({ outRoot });

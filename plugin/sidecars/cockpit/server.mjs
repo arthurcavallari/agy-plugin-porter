@@ -1,12 +1,18 @@
 // The Plugin Porter cockpit: a side-pane view where the user previews a port, reads its
-// report and installs it after a confirm dialog. Zero dependencies. The view's files
-// and the SDK's preload.js are public; every /api route needs this server's token
-// (server_info.json) or the host's ANTIGRAVITY_SIDECAR_UI_TOKEN (the view's ?token=).
+// report and installs it after confirming in a consent bar. The view uses sidecar-kit's
+// native components, as Hangar and context-monitor do; the plugin build bundles the kit,
+// since agy runs no npm install. The view's files, the kit's assets and the SDK's
+// preload.js are public; every /api route needs this server's token (server_info.json)
+// or the host's ANTIGRAVITY_SIDECAR_UI_TOKEN (the view's ?token=).
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+
+import { AGY_CLIENT_JS, AGY_SHELL_CSS } from 'antigravity-sidecar-kit/shell';
+import { fetchHostStylesheet } from 'antigravity-sidecar-kit/theme';
+import { buildAgyUiCss, buildAgyUiJs } from 'antigravity-sidecar-kit/ui';
 
 import { createPreview, installPreview, listPreviews, readPreview } from '../../lib/consent.mjs';
 import { removeServerInfoIfOurs, stopOnSignals, watchLanguageServer, writeServerInfo } from '../../scripts/mod-runtime/lifecycle.mjs';
@@ -17,6 +23,19 @@ const DATA_DIR = process.env.ANTIGRAVITY_EXECUTABLE_DATA_DIR?.trim()
 mkdirSync(DATA_DIR, { recursive: true });
 const tokens = [randomBytes(24).toString('hex'), process.env.ANTIGRAVITY_SIDECAR_UI_TOKEN].filter(Boolean);
 const STATIC = { '/ui.html': 'text/html', '/ui.js': 'application/javascript', '/ui.css': 'text/css' };
+// The kit modules the view uses: base helpers and icons, buttons and fields, cards and badges, banners and toasts
+const UI_MODULES = ['core', 'controls', 'surfaces', 'overlays'];
+let uiCss = null;
+let uiJs = null;
+// Public assets from sidecar-kit. The host stylesheet comes from the Language Server (ANTIGRAVITY_LS_ADDRESS);
+// without one it's empty, and the kit's shell tokens fall back to their own defaults.
+const KIT_ASSETS = {
+  '/compiled_tailwind.css': async () => [await fetchHostStylesheet().catch(() => ''), 'text/css'],
+  '/shell.css': () => [AGY_SHELL_CSS, 'text/css'],
+  '/shell.js': () => [AGY_CLIENT_JS, 'application/javascript'],
+  '/agy-ui.css': () => [(uiCss ??= buildAgyUiCss(UI_MODULES)), 'text/css'],
+  '/agy-ui.js': () => [(uiJs ??= buildAgyUiJs(UI_MODULES)), 'application/javascript'],
+};
 let busy = false;
 
 function log(event, data = {}) {
@@ -91,6 +110,10 @@ const server = createServer(async (req, res) => {
   }
   if (req.method === 'GET' && Object.hasOwn(STATIC, url.pathname)) {
     return send(res, 200, readFileSync(join(import.meta.dirname, url.pathname.slice(1)), 'utf8'), `${STATIC[url.pathname]}; charset=utf-8`);
+  }
+  if (req.method === 'GET' && Object.hasOwn(KIT_ASSETS, url.pathname)) {
+    const [body, type] = await KIT_ASSETS[url.pathname]();
+    return send(res, 200, body, `${type}; charset=utf-8`);
   }
   if (!tokenOk(req.headers['x-sidecar-token'] || url.searchParams.get('token'))) return send(res, 401, { error: 'no valid token' });
   const key = `${req.method} ${url.pathname}`;

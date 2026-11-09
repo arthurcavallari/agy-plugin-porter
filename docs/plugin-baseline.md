@@ -2,6 +2,11 @@
 
 This is the live-validation record for Phase 4 (see [plan.md](./plan.md#phase-4-outcome-2026-10-29)): the porter packaged as its own Antigravity plugin, with the cockpit sidecar inside it.
 
+> [!NOTE]
+> **Since this run, the cockpit has been rebuilt on `antigravity-sidecar-kit` (2026-11-09).** Its pane now uses the kit's native components (fields, cards, badges, banners) and the host's theme, and it confirms installs in an inline consent bar instead of a dialog. The build bundles the kit into the plugin's `node_modules`.
+> - **Checked with the agy CLI in a throwaway home, not in the app:** `agy plugin install` keeps that `node_modules` folder, and `agy plugin validate --strict` passes on the build.
+> - **Live:** the run below used the earlier, dependency-free cockpit and its dialog, so its rows describe that version.
+
 Every claim is labeled, as in [ui-mods-baseline.md](./ui-mods-baseline.md):
 - **live**: seen on the running Antigravity desktop app, with log lines or files as evidence
 - **static**: read from installed files or source, never exercised
