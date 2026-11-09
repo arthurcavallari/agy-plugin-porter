@@ -1,7 +1,10 @@
 // The cockpit view: previews a port, shows its report, and installs it after the user
-// confirms the tier and the audit findings in a dialog.
+// confirms the tier and the audit findings in a consent bar. Built on sidecar-kit's
+// native components (window.AgyUI), as Hangar and context-monitor are.
 (() => {
+  const ui = window.AgyUI;
   const $ = (id) => document.getElementById(id);
+  const esc = (s) => ui.escHtml(s ?? '');
   const token = new URLSearchParams(location.search).get('token') || '';
   const headers = { 'Content-Type': 'application/json', 'X-Sidecar-Token': token };
   const api = async (path, body) => {
@@ -10,86 +13,114 @@
     if (!res.ok) throw new Error(data.error || `request failed (${res.status})`);
     return data;
   };
-  const TIER_TEXT = { TIER_1_TELEMETRY: 'Tier 1 (telemetry)', TIER_2_LOCAL_TOOLING: 'Tier 2 (local tooling)', TIER_3_AGENT_CONTROL: 'Tier 3 (agent control)' };
+
+  // The same tier colors as Hangar's badges
+  const TIERS = {
+    TIER_1_TELEMETRY: { short: 'Tier 1', label: 'Tier 1 (telemetry)', state: 'running' },
+    TIER_2_LOCAL_TOOLING: { short: 'Tier 2', label: 'Tier 2 (local tooling)', state: 'hibernated' },
+    TIER_3_AGENT_CONTROL: { short: 'Tier 3', label: 'Tier 3 (agent control)', state: 'errored' },
+  };
+  const SEVERITY = { high: 'errored', medium: 'hibernated', low: 'stopped' };
+  const tierOf = (t) => TIERS[t] ?? { short: t, label: t, state: 'stopped' };
+  const badge = (text, state, { icon = '', title = '' } = {}) =>
+    `<span class="agy-badge ${esc(state)}"${title ? ` title="${esc(title)}"` : ''}>${icon ? ui.iconSvg(icon, 11) : ''}<span>${esc(text)}</span></span>`;
+  const tierBadge = (t) => badge(tierOf(t).short, tierOf(t).state, { icon: 'shield', title: tierOf(t).label });
   let current = null;
 
-  // Host theme: theme-change carries themeType (light/dark).
-  window.addEventListener('message', (e) => {
-    const parentOrigin = location.ancestorOrigins?.[0];
-    if (e.source !== window.parent || !e.origin || e.origin === 'null' || (parentOrigin && parentOrigin !== 'null' && e.origin !== parentOrigin)) return;
-    if (e.data?.type === 'theme-change') {
-      const t = e.data.payload?.themeType ?? e.data.payload?.theme;
-      if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+  function status(text, tone = 'is-info') {
+    const el = $('status');
+    el.textContent = text;
+    el.className = `agy-banner ${tone}${text ? '' : ' hidden'}`;
+  }
+
+  function busy(btn, label) {
+    btn.disabled = Boolean(label);
+    if (label) {
+      btn.dataset.label ??= btn.textContent;
+      btn.textContent = label;
+    } else if (btn.dataset.label) {
+      btn.textContent = btn.dataset.label;
+      delete btn.dataset.label;
     }
-  });
-
-  function status(text, error = false) {
-    $('status').textContent = text;
-    $('status').className = error ? 'error' : '';
   }
 
-  function el(tag, text, cls) {
-    const n = document.createElement(tag);
-    if (text !== undefined) n.textContent = text;
-    if (cls) n.className = cls;
-    return n;
+  function section(title, items, render) {
+    const body = items.length
+      ? `<ul class="cockpit-list">${items.map((item) => `<li>${render(item)}</li>`).join('')}</ul>`
+      : '<p class="cockpit-none">None.</p>';
+    return `<div class="agy-card-section-bar"><span>${esc(title)}</span>${ui.renderCountPill(items.length)}</div>${body}`;
   }
 
-  function list(title, items, render) {
-    const frag = document.createDocumentFragment();
-    frag.append(el('h2', `${title} (${items.length})`));
-    if (!items.length) return frag.append(el('p', 'None.', 'dim')), frag;
-    const ul = el('ul');
-    for (const item of items) ul.append(el('li', render(item)));
-    frag.append(ul);
-    return frag;
+  function validationBadge(v) {
+    if (!v) return badge('Not validated', 'hibernated', { icon: 'warning', title: "agy isn't on PATH, so this port can't be installed" });
+    return v.ok ? badge('Validated', 'running', { icon: 'check' })
+      : badge(`Validation failed (${v.errors.length})`, 'errored', { icon: 'error' });
   }
 
   function showReport(p) {
     current = p;
     const r = p.report;
-    const v = r.validation;
+    const meta = [p.source, p.path && `path ${p.path}`, r.sourceCommit && `commit ${r.sourceCommit.slice(0, 12)}`].filter(Boolean).join(' · ');
     const box = $('report');
-    box.replaceChildren();
-    box.append(el('h2', `${p.slug} (${r.ecosystems.join(' + ') || 'unknown'})`));
-    box.append(el('p', `Source: ${p.source}${p.path ? `, path ${p.path}` : ''}${r.sourceCommit ? `, commit ${r.sourceCommit.slice(0, 12)}` : ''}`, 'dim'));
-    box.append(el('p', TIER_TEXT[p.tier] ?? p.tier, 'tier'));
-    if (r.tierReasons.length) box.append(el('p', `Because: ${r.tierReasons.join('; ')}`, 'dim'));
-    box.append(list('Ported', r.ported, (x) => x));
-    box.append(list('Not ported', r.unported, (u) => `${u.item}: ${u.reason}`));
-    box.append(list('Warnings', r.warnings, (w) => w));
-    box.append(list('Audit flags', r.flags, (f) => `[${f.severity}] ${f.kind}${f.file ? ` in ${f.file}${f.line ? `:${f.line}` : ''}` : ''}`));
-    const valid = v ? (v.ok ? ['agy plugin validate passed', 'ok'] : [`agy plugin validate failed (${v.errors.length} errors)`, 'bad'])
-      : ['Not validated: agy isn\'t on PATH, so this port can\'t be installed', 'warn'];
-    box.append(el('p', valid[0], valid[1]));
-    const install = el('button', 'Install…');
-    install.type = 'button';
-    install.disabled = !v?.ok;
-    install.addEventListener('click', confirmInstall);
-    box.append(install);
+    box.innerHTML = `
+      <div class="agy-card-header">
+        <div class="cockpit-title-group">
+          <div class="agy-card-title">${esc(p.slug)}</div>
+          <div class="agy-card-meta">${esc(meta)}</div>
+        </div>
+        <div class="cockpit-badges">
+          ${badge(r.ecosystems.join(' + ') || 'unknown', 'stopped', { icon: 'extension' })}${tierBadge(p.tier)}${validationBadge(r.validation)}
+        </div>
+      </div>
+      ${section('Ported', r.ported, (x) => esc(x))}
+      ${section('Not ported', r.unported, (u) => `<code>${esc(u.item)}</code> ${esc(u.reason)}`)}
+      ${section('Warnings', r.warnings, (w) => esc(w))}
+      ${section('Audit findings', r.flags, (f) => `${badge(f.severity, SEVERITY[f.severity] ?? 'stopped')} ${esc(f.kind)}${
+        f.file ? ` <code>${esc(f.file)}${f.line ? `:${f.line}` : ''}</code>` : ''}`)}
+      ${section('Why this tier', r.tierReasons, (x) => esc(x))}
+      <div class="cockpit-actions">
+        <button id="install" type="button" class="agy-btn agy-btn-primary"${r.validation?.ok ? '' : ' disabled'}>Install…</button>
+      </div>
+      <div id="consent" class="agy-consent-bar hidden">
+        <span id="consent-text"></span>
+        <div class="agy-consent-actions">
+          <button id="cancel" type="button" class="agy-btn agy-btn-outline">Cancel</button>
+          <button id="ok" type="button" class="agy-btn agy-btn-primary">Install</button>
+        </div>
+      </div>`;
+    $('install').addEventListener('click', confirmInstall);
+    $('cancel').addEventListener('click', () => {
+      $('consent').classList.add('hidden');
+      $('install').focus();
+    });
+    $('ok').addEventListener('click', install);
     box.hidden = false;
   }
 
   function confirmInstall() {
     const p = current;
-    $('confirm-title').textContent = `Install ${p.slug}?`;
     const flags = p.report.flags.length;
-    $('confirm-body').textContent = `It will be installed into your Antigravity profile as ${TIER_TEXT[p.tier] ?? p.tier}, `
-      + `with ${p.report.unported.length} item(s) not ported and ${flags} audit flag${flags === 1 ? '' : 's'}. `
+    const unported = p.report.unported.length;
+    $('consent-text').innerHTML = `Install <strong>${esc(p.slug)}</strong> as ${esc(tierOf(p.tier).label)}, with `
+      + `${unported} item${unported === 1 ? '' : 's'} not ported and ${flags} audit finding${flags === 1 ? '' : 's'}? `
       + 'You can switch it off later in Customizations > Plugins.';
-    $('confirm').showModal();
+    $('consent').classList.remove('hidden');
+    $('cancel').focus();
   }
 
   async function install() {
-    $('confirm').close();
     const p = current;
+    $('consent').classList.add('hidden');
+    busy($('install'), 'Installing…');
     status(`Installing ${p.slug}…`);
     try {
       const r = await api('/api/install', { previewId: p.id, acceptedTier: p.tier, acceptedFlags: p.flagsDigest });
-      status(`Installed ${r.slug}. Switch it off in Customizations > Plugins before uninstalling it.`);
+      ui.showToast(`Installed ${r.slug}`);
+      status(`Installed ${r.slug}. Switch it off in Customizations > Plugins before uninstalling it.`, 'is-success');
       $('report').hidden = true;
     } catch (err) {
-      status(err.message, true);
+      busy($('install'), '');
+      status(err.message, 'is-error');
     }
     refresh();
   }
@@ -97,38 +128,57 @@
   async function refresh() {
     try {
       const { previews } = await api('/api/previews');
-      const ul = $('recent');
-      ul.replaceChildren();
-      for (const p of previews) {
-        const li = el('li');
-        const b = el('button', p.slug);
-        b.type = 'button';
-        b.addEventListener('click', async () => showReport(await api(`/api/preview?id=${encodeURIComponent(p.id)}`)));
-        li.append(b, ` ${p.source} · ${TIER_TEXT[p.tier] ?? p.tier}`);
-        ul.append(li);
+      $('recent-count').innerHTML = previews.length ? ui.renderCountPill(previews.length) : '';
+      const list = $('recent');
+      if (!previews.length) {
+        list.innerHTML = ui.renderEmptyState({ icon: 'download', message: 'No previews yet. Preview a source to see its report here.' });
+        return;
       }
-      $('recent-wrap').hidden = !previews.length;
+      list.innerHTML = `<ul class="cockpit-list cockpit-rows">${previews.map((p) => `
+        <li><button type="button" class="cockpit-row" data-id="${esc(p.id)}">
+          <span class="cockpit-row-name">${esc(p.slug)}</span>
+          <span class="cockpit-row-source">${esc(p.source)}</span>
+          ${tierBadge(p.tier)}
+        </button></li>`).join('')}</ul>`;
+      for (const b of list.querySelectorAll('.cockpit-row')) {
+        b.addEventListener('click', async () => {
+          try {
+            showReport(await api(`/api/preview?id=${encodeURIComponent(b.dataset.id)}`));
+            status('');
+          } catch (err) {
+            status(err.message, 'is-error');
+          }
+        });
+      }
     } catch (err) {
-      status(err.message, true);
+      status(err.message, 'is-error');
     }
   }
 
+  $('fields').innerHTML = ui.renderField({
+    id: 'source', label: 'Source', required: true, attrs: 'autocomplete="off" spellcheck="false"',
+    help: 'A folder path, or a GitHub repo as owner/repo@tag. Pin a tag or commit.',
+  }) + '<div class="cockpit-row-2">' + ui.renderField({
+    id: 'path', label: 'Path', help: 'Optional: the subfolder that holds the plugin.', attrs: 'autocomplete="off" spellcheck="false"',
+  }) + ui.renderField({
+    id: 'slug', label: 'Name', help: "Optional: the plugin's name in Antigravity.", attrs: 'autocomplete="off" spellcheck="false"',
+  }) + '</div>';
+
   $('form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    $('preview').disabled = true;
+    const btn = $('preview');
+    busy(btn, 'Previewing…');
     $('report').hidden = true;
     status('Porting… a GitHub source can take a minute.');
     try {
       showReport(await api('/api/preview', { source: $('source').value, path: $('path').value, slug: $('slug').value }));
       status('');
     } catch (err) {
-      status(err.message, true);
+      status(err.message, 'is-error');
     } finally {
-      $('preview').disabled = false;
+      busy(btn, '');
       refresh();
     }
   });
-  $('ok').addEventListener('click', install);
-  $('cancel').addEventListener('click', () => $('confirm').close());
   refresh();
 })();

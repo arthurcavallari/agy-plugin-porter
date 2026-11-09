@@ -30,6 +30,23 @@ const post = (path, body) => fetch(`${base()}${path}`, {
   method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Sidecar-Token': s.info.token }, body: JSON.stringify(body),
 });
 
+test('serves sidecar-kit assets from the bundled kit, without a token, even with no Language Server', async () => {
+  for (const [path, type, marker] of [
+    ['/agy-ui.css', 'text/css', '.agy-card'],
+    ['/agy-ui.js', 'application/javascript', 'AgyUI'],
+    ['/shell.css', 'text/css', '--agy-ink'],
+    ['/shell.js', 'application/javascript', 'theme-change'],
+  ]) {
+    const res = await fetch(`${base()}${path}`);
+    assert.equal(res.status, 200, path);
+    assert.match(res.headers.get('content-type'), new RegExp(type), path);
+    assert.ok((await res.text()).includes(marker), `${path} has ${marker}`);
+  }
+  const host = await fetch(`${base()}/compiled_tailwind.css`);
+  assert.equal(host.status, 200, 'the host stylesheet route answers even when there is no Language Server to fetch from');
+  assert.match(host.headers.get('content-type'), /text\/css/);
+});
+
 test('the view files load without a token; the API needs one', async () => {
   for (const f of ['ui.html', 'ui.js', 'ui.css']) assert.equal((await fetch(`${base()}/${f}`)).status, 200, f);
   assert.equal((await fetch(`${base()}/api/previews`)).status, 401);

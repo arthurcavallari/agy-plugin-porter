@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Builds the porter's own Antigravity plugin: plugin/ (skill, agent, rules, hook, MCP
 // server, cockpit sidecar) plus copies of lib/, bin/ and the scripts lib/ needs, since a
-// plugin installed with agy gets no npm install. Audits the result, then packs
+// plugin installed with agy gets no npm install. For the same reason it bundles
+// antigravity-sidecar-kit (a devDependency) into the plugin's node_modules, where the
+// cockpit's imports resolve it. Audits the result, then packs
 // <out>/agy-plugin-porter-plugin-<version>.tgz (one top folder, as Hangar unpacks it)
 // and its .sha256.
 //   node scripts/build-plugin.mjs [--out <dir>] [--no-tar]
@@ -11,6 +13,8 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+
+import { bundleSidecarKit } from 'antigravity-sidecar-kit/setup';
 
 import { auditPlugin } from '../lib/static-auditor.mjs';
 
@@ -26,6 +30,8 @@ export function buildPlugin({ outRoot = join(ROOT, 'dist', 'plugin'), tar = true
   mkdirSync(dir, { recursive: true });
   cpSync(join(ROOT, 'plugin'), dir, { recursive: true });
   for (const rel of COPIED) cpSync(join(ROOT, rel), join(dir, rel), { recursive: true });
+  // The kit's own copier: everything but .git, node_modules and test, into <dir>/node_modules
+  if (!bundleSidecarKit(dir)) throw new Error('antigravity-sidecar-kit could not be bundled; run npm install');
   const manifest = JSON.parse(readFileSync(join(dir, 'plugin.json'), 'utf8'));
   writeFileSync(join(dir, 'plugin.json'), `${JSON.stringify({ ...manifest, version }, null, 2)}\n`);
 
