@@ -1,14 +1,14 @@
 // The cockpit sidecar from a built plugin, on a port and token chosen here (as the app
 // does), with a stand-in agy.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { buildPlugin } from '../scripts/build-plugin.mjs';
 import { startSidecar } from './mod-helpers.mjs';
+import { tempDir } from './temp.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 const STUB = fileURLToPath(new URL('./agy-stub.mjs', import.meta.url));
@@ -16,9 +16,9 @@ let s;
 let agyLog;
 
 before(async () => {
-  const outRoot = mkdtempSync(join(tmpdir(), 'porter-build-'));
+  const outRoot = tempDir('porter-build-');
   buildPlugin({ outRoot, tar: false });
-  const tmp = mkdtempSync(join(tmpdir(), 'porter-cockpit-'));
+  const tmp = tempDir('porter-cockpit-');
   agyLog = join(tmp, 'agy.log');
   Object.assign(process.env, { TMPDIR: tmp, TEMP: tmp, TMP: tmp, AGY_PORTER_PREVIEWS_DIR: join(tmp, 'previews'), AGY_PORTER_AGY: STUB, AGY_STUB_LOG: agyLog });
   s = await startSidecar(join(outRoot, 'agy-plugin-porter'), 'cockpit');

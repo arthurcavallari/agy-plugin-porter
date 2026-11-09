@@ -3,21 +3,21 @@
 // payloads, MCP calls, the view's SSE stream and clicks).
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { detect } from '../lib/detector.mjs';
 import { compileMods } from '../lib/mod-compiler.mjs';
 import { loadEsbuild } from '../lib/mod-transform.mjs';
+import { tempDir as makeTempDir } from './temp.mjs';
 
 export const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 export const SPIKE_MODS = fileURLToPath(new URL('../spike/mods/', import.meta.url));
 export const hasEsbuild = Boolean(loadEsbuild());
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-export const tempDir = (prefix = 'porter-mod-') => mkdtempSync(join(tmpdir(), prefix));
+export const tempDir = (prefix = 'porter-mod-') => makeTempDir(prefix);
 
 export function compileSource(srcDir, { slug, esbuild } = {}) {
   const pluginDir = tempDir('porter-mod-out-');

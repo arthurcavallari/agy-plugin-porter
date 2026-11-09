@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { detect } from '../lib/detector.mjs';
 import { compileHooks, remapMatcher, writeHookPort } from '../lib/hook-compiler.mjs';
+import { tempDir } from './temp.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 const compileFixture = (name, slug = `fixture-${name}`) => compileHooks(detect(fixture(name)).hookSources, { slug });
@@ -154,7 +154,7 @@ test('parse errors and invalid slugs', () => {
 });
 
 test('writeHookPort replaces the staged foreign hooks and ships the shim', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'porter-write-'));
+  const dir = tempDir('porter-write-');
   cpSync(fixture('claude'), dir, { recursive: true });
   cpSync(join(dir, 'hooks/hooks.json'), join(dir, 'hooks.json'));
   writeHookPort(dir, compileHooks(detect(dir).hookSources, { slug: 'fixture-claude' }));
@@ -166,14 +166,14 @@ test('writeHookPort replaces the staged foreign hooks and ships the shim', () =>
 });
 
 test('writeHookPort drops a UI-mod hooks.json (the mod compiler writes its own) and refuses to clobber a foreign shim', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'porter-write-'));
+  const dir = tempDir('porter-write-');
   cpSync(fixture('claude-mod'), dir, { recursive: true });
   cpSync(join(dir, 'hooks/hooks.json'), join(dir, 'hooks.json'));
   writeHookPort(dir, compileHooks(detect(dir).hookSources, { slug: 'm' }));
   assert.equal(existsSync(join(dir, 'hooks/hooks.json')), false);
   assert.equal(existsSync(join(dir, 'hooks.json')), false);
 
-  const other = mkdtempSync(join(tmpdir(), 'porter-write-'));
+  const other = tempDir('porter-write-');
   cpSync(fixture('claude'), other, { recursive: true });
   writeFileSync(join(other, 'scripts/hook-shim.mjs'), '// the plugin\'s own file\n');
   assert.throws(() => writeHookPort(other, compileHooks(detect(other).hookSources, { slug: 'c' })), /isn't the porter's shim/);
@@ -181,8 +181,8 @@ test('writeHookPort drops a UI-mod hooks.json (the mod compiler writes its own) 
 
 const agy = spawnSync('agy', ['--version'], { encoding: 'utf8' });
 test('agy plugin validate --strict accepts the compiled hooks', { skip: agy.status !== 0 && 'agy not on PATH' }, () => {
-  const dir = mkdtempSync(join(tmpdir(), 'porter-validate-'));
-  const home = mkdtempSync(join(tmpdir(), 'porter-home-'));
+  const dir = tempDir('porter-validate-');
+  const home = tempDir('porter-home-');
   cpSync(fixture('claude/scripts'), join(dir, 'scripts'), { recursive: true });
   writeFileSync(join(dir, 'plugin.json'), JSON.stringify({ name: 'fixture-claude', version: '0.1.0', description: 'x' }));
   writeHookPort(dir, compileHooks(detect(fixture('claude')).hookSources, { slug: 'fixture-claude' }));

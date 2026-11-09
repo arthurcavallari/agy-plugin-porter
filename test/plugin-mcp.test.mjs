@@ -2,13 +2,13 @@
 // with a stand-in agy.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { buildPlugin } from '../scripts/build-plugin.mjs';
+import { tempDir } from './temp.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 const STUB = fileURLToPath(new URL('./agy-stub.mjs', import.meta.url));
@@ -18,8 +18,8 @@ let nextId = 1;
 const pending = new Map();
 
 before(() => {
-  const { dir } = buildPlugin({ outRoot: mkdtempSync(join(tmpdir(), 'porter-build-')), tar: false });
-  const tmp = mkdtempSync(join(tmpdir(), 'porter-mcp-'));
+  const { dir } = buildPlugin({ outRoot: tempDir('porter-build-'), tar: false });
+  const tmp = tempDir('porter-mcp-');
   agyLog = join(tmp, 'agy.log');
   server = spawn(process.execPath, [join(dir, 'mcp', 'server.mjs')], {
     env: { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp, AGY_PORTER_PREVIEWS_DIR: join(tmp, 'previews'), AGY_PORTER_AGY: STUB, AGY_STUB_LOG: agyLog },

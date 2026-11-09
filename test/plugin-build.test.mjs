@@ -1,14 +1,14 @@
 // The porter's own plugin: what the build writes, and that agy accepts it.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { auditPlugin } from '../lib/static-auditor.mjs';
 import { buildPlugin, COPIED } from '../scripts/build-plugin.mjs';
+import { tempDir } from './temp.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
@@ -18,7 +18,7 @@ const json = (dir, f) => JSON.parse(readFileSync(join(dir, f), 'utf8'));
 const hasAgy = spawnSync('agy', ['--version'], { encoding: 'utf8' }).status === 0;
 
 test('build: plugin/ plus copies of lib/, bin/ and the runtime; 7-key manifest at the package version', () => {
-  const { dir, version, tier } = buildPlugin({ outRoot: mkdtempSync(join(tmpdir(), 'porter-build-')), tar: false });
+  const { dir, version, tier } = buildPlugin({ outRoot: tempDir('porter-build-'), tar: false });
   const written = files(dir);
   for (const f of ['plugin.json', 'hooks.json', 'mcp_config.json', 'rules/AGENTS.md', 'skills/port-plugin/SKILL.md',
     'agents/plugin-migration-engineer.md', 'scripts/session-start.mjs', 'mcp/server.mjs', 'sidecars/cockpit/sidecar.json',
@@ -42,7 +42,7 @@ test('build: plugin/ plus copies of lib/, bin/ and the runtime; 7-key manifest a
 });
 
 test('build: the tarball holds one top folder, with its sha256 beside it', () => {
-  const outRoot = mkdtempSync(join(tmpdir(), 'porter-build-'));
+  const outRoot = tempDir('porter-build-');
   const { tarball, sha256 } = buildPlugin({ outRoot });
   const list = spawnSync('tar', ['-tzf', tarball.split(/[\\/]/).pop()], { cwd: outRoot, encoding: 'utf8' }).stdout.trim().split('\n');
   assert.ok(list.length > 20);
@@ -51,8 +51,8 @@ test('build: the tarball holds one top folder, with its sha256 beside it', () =>
 });
 
 test('agy plugin validate --strict accepts the built plugin', { skip: !hasAgy && 'agy not on PATH' }, () => {
-  const { dir } = buildPlugin({ outRoot: mkdtempSync(join(tmpdir(), 'porter-build-')), tar: false });
-  const home = mkdtempSync(join(tmpdir(), 'porter-home-'));
+  const { dir } = buildPlugin({ outRoot: tempDir('porter-build-'), tar: false });
+  const home = tempDir('porter-home-');
   const run = spawnSync('agy', ['plugin', 'validate', dir, '--json'], {
     encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home, NO_COLOR: '1' },
   });
