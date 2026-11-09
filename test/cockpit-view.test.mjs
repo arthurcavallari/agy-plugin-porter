@@ -51,6 +51,8 @@ test('the form renders sidecar-kit fields, wired to their labels and help text',
     assert.equal(input.getAttribute('aria-describedby'), `${id}-help`);
   }
   assert.equal($('source').hasAttribute('required'), true);
+  assert.deepEqual(['source', 'path', 'slug'].map((id) => $(id).getAttribute('placeholder')),
+    ['owner/repo@v1.0.0', 'plugins/code-review', "Defaults to the plugin's own name"]);
   assert.equal($('preview').className, 'agy-btn agy-btn-primary');
   assert.ok($('recent').querySelector('.agy-empty-state'), 'no previews yet shows an empty state');
 });
