@@ -76,16 +76,24 @@ test('a preview shows the report as kit badges and sections; Install asks first,
   assert.equal($('preview').disabled, false, 'the Preview button is usable again');
   assert.equal(calls.find((c) => c.path === '/api/preview').token, 't0k');
 
-  // Install opens the consent bar; Cancel closes it without posting
+  // Install opens the consent bar in the button's place; Cancel closes it without posting and brings the button back
   $('install').dispatchEvent(new win.Event('click'));
   assert.equal($('consent').classList.contains('hidden'), false);
+  assert.equal($('install-row').hidden, true, 'only one install button shows at a time');
+  assert.equal($('ok').textContent, 'Confirm install');
   assert.match($('consent-text').textContent, /Install review as Tier 3 \(agent control\), with 1 item not ported and 1 audit finding\?/);
   $('cancel').dispatchEvent(new win.Event('click'));
   assert.equal($('consent').classList.contains('hidden'), true);
+  assert.equal($('install-row').hidden, false);
   assert.equal(calls.some((c) => c.path === '/api/install'), false);
 
+  // Confirming closes the bar and shows the button again, busy, while the install runs
   $('install').dispatchEvent(new win.Event('click'));
   $('ok').dispatchEvent(new win.Event('click'));
+  assert.equal($('consent').classList.contains('hidden'), true);
+  assert.equal($('install-row').hidden, false);
+  assert.equal($('install').textContent, 'Installing…');
+  assert.equal($('install').disabled, true);
   await settle();
   const post = calls.find((c) => c.path === '/api/install');
   assert.deepEqual(post.body, { previewId: 'p1', acceptedTier: 'TIER_3_AGENT_CONTROL', acceptedFlags: 'abc123' });
