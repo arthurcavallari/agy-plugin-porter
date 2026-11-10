@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// agy-porter --source <path|owner/repo@ref> [--path <dir>] [--slug <s>] [--out <dir>]
+// agy-porter --source <path|owner/repo@ref|github link> [--path <dir>] [--slug <s>] [--out <dir>]
 //            [--force] [--validate] [--install] [--json]
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,14 +10,16 @@ import { portPackage } from '../lib/index.mjs';
 import { removeTree } from '../lib/source.mjs';
 import { spawnAgy } from '../lib/transpiler-engine.mjs';
 
-const USAGE = `Usage: agy-porter --source <path|owner/repo@ref> [options]
+const USAGE = `Usage: agy-porter --source <path|owner/repo@ref|github link> [options]
 
 Ports a Claude Code, Gemini CLI, Cursor, Roo/Kilo or Codex plugin into a native
 Antigravity plugin and prints a port report.
 
 Options:
-  --source <spec>   local folder, or GitHub owner/repo[@tag|branch|sha]
-  --path <dir>      subfolder of the source that holds the plugin
+  --source <spec>   local folder, GitHub owner/repo[@tag|branch|sha], or a
+                    github.com link to the repo or to a folder in it
+  --path <dir>      subfolder of the source that holds the plugin (a folder
+                    link sets it for you)
   --slug <name>     plugin name in Antigravity (default: the source's name)
   --out <dir>       where to write the ported plugin (required unless --install)
   --force           replace a non-empty --out

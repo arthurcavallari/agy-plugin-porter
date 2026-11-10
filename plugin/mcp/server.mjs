@@ -16,8 +16,8 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        source: { type: 'string', description: 'A folder path, or a GitHub repo as owner/repo@<tag or commit>' },
-        path: { type: 'string', description: 'Subfolder of the source that holds the plugin (monorepos)' },
+        source: { type: 'string', description: 'A folder path, a GitHub repo as owner/repo@<tag or commit>, or a github.com link to the repo or to a folder in it (https://github.com/<owner>/<repo>/tree/<ref>/<folder>)' },
+        path: { type: 'string', description: 'Subfolder of the source that holds the plugin (monorepos). A folder link already sets it.' },
         slug: { type: 'string', description: 'Plugin name in Antigravity (default: the source\'s name)' },
       },
       required: ['source'],

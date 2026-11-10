@@ -158,7 +158,7 @@
 
   $('fields').innerHTML = ui.renderField({
     id: 'source', label: 'Source', required: true, placeholder: 'owner/repo@v1.0.0', attrs: 'autocomplete="off" spellcheck="false"',
-    help: 'A folder path, or a GitHub repo as owner/repo@tag. Pin a tag or commit.',
+    help: 'A folder path, a GitHub link, or owner/repo@tag. Pin a tag or commit.',
   }) + '<div class="cockpit-row-2">' + ui.renderField({
     id: 'path', label: 'Path', placeholder: 'plugins/code-review', attrs: 'autocomplete="off" spellcheck="false"',
     help: 'Optional: the subfolder that holds the plugin.',
@@ -167,8 +167,31 @@
     help: "Optional: the plugin's name in Antigravity.",
   }) + '</div>';
 
+  // A github.com link to a repo or folder becomes owner/repo@ref, with the folder in Path, so the fields show the form
+  // they take. When Path already names a different folder, the link stays as it is and the porter reports the clash.
+  // The porter accepts the link itself too (lib/source.mjs).
+  const GITHUB_LINK = /^https?:\/\/(?:www\.)?github\.com\/([^/?#]+)\/([^/?#]+?)(?:\.git)?(?:\/tree\/([^/?#]+)((?:\/[^/?#]*)*))?\/?(?:[?#].*)?$/i;
+  function splitGithubLink() {
+    const m = GITHUB_LINK.exec($('source').value.trim());
+    if (!m) return;
+    let owner, repo, ref, folder;
+    try {
+      [owner, repo, ref] = [m[1], m[2], m[3] ?? ''].map(decodeURIComponent);
+      folder = (m[4] ?? '').split('/').filter(Boolean).map(decodeURIComponent).join('/');
+    } catch {
+      return;
+    }
+    const given = $('path').value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+    if (folder && given && given !== folder) return;
+    $('source').value = `${owner}/${repo}${ref ? `@${ref}` : ''}`;
+    if (folder) $('path').value = folder;
+  }
+  $('source').addEventListener('change', splitGithubLink);
+  $('source').addEventListener('paste', () => setTimeout(splitGithubLink, 0));
+
   $('form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    splitGithubLink();
     const btn = $('preview');
     busy(btn, 'Previewing…');
     $('report').hidden = true;

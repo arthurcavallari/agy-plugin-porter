@@ -103,6 +103,49 @@ test("hidden cards stay hidden: ui.css overrides the kit cards' display:flex for
   assert.match(readFileSync(`${COCKPIT}ui.html`, 'utf8'), /<section id="report" class="agy-card[^"]*"[^>]*hidden>/);
 });
 
+test('a GitHub folder link in Source splits into owner/repo@ref and Path', async () => {
+  const { win, $, calls } = loadView();
+  await settle();
+  const sha = '0412be76f50ab4f4f8abff3753efa9269fbbca5b';
+  $('source').value = `https://github.com/anthropics/claude-plugins-official/tree/${sha}/plugins/plugin-dev`;
+  $('source').dispatchEvent(new win.Event('change'));
+  assert.equal($('source').value, `anthropics/claude-plugins-official@${sha}`);
+  assert.equal($('path').value, 'plugins/plugin-dev');
+
+  // A repo link without a ref or folder, pasted
+  $('path').value = '';
+  $('source').value = 'https://github.com/acme/plugins';
+  $('source').dispatchEvent(new win.Event('paste'));
+  await settle();
+  assert.equal($('source').value, 'acme/plugins');
+  assert.equal($('path').value, '');
+
+  // Submitting splits it too, and posts the split values
+  $('source').value = 'https://github.com/acme/plugins/tree/v1/plugins/review/';
+  $('form').dispatchEvent(new win.Event('submit', { cancelable: true }));
+  await settle();
+  assert.deepEqual(calls.find((c) => c.path === '/api/preview').body, { source: 'acme/plugins@v1', path: 'plugins/review', slug: '' });
+});
+
+test('a folder link is left alone when Path names a different folder, and other text is never touched', async () => {
+  const { win, $ } = loadView();
+  await settle();
+  const link = 'https://github.com/acme/plugins/tree/v1/plugins/review';
+  $('source').value = link;
+  $('path').value = 'plugins/other';
+  $('source').dispatchEvent(new win.Event('change'));
+  assert.equal($('source').value, link, 'the porter reports the clash');
+  assert.equal($('path').value, 'plugins/other');
+
+  $('path').value = '';
+  for (const text of ['acme/plugins@v1', './my-plugin', 'https://gitlab.com/acme/plugins', 'https://github.com/acme/plugins/blob/v1/README.md']) {
+    $('source').value = text;
+    $('source').dispatchEvent(new win.Event('change'));
+    assert.equal($('source').value, text);
+    assert.equal($('path').value, '');
+  }
+});
+
 test('an unvalidated port cannot be installed', async () => {
   const preview = { ...PREVIEW, report: { ...PREVIEW.report, validation: null } };
   const { win, $ } = loadView({ preview });
