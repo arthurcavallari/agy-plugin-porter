@@ -105,6 +105,12 @@ test('a preview shows the report as kit badges and sections; Install asks first,
   assert.ok($('recent').querySelector('.cockpit-row'), 'the preview is listed under Recent previews');
 });
 
+test('the pane fills its width, as Hangar and Context Monitor do', () => {
+  // A max-width left an empty band on the right of a wide editor tab (seen live)
+  const cockpitRule = readFileSync(`${COCKPIT}ui.css`, 'utf8').match(/\.cockpit\s*\{([^}]*)\}/)[1];
+  assert.doesNotMatch(cockpitRule, /max-width/);
+});
+
 test("hidden cards stay hidden: ui.css overrides the kit cards' display:flex for [hidden]", () => {
   // linkedom applies no CSS, so check the rule itself; without it a hidden report drew as an empty bar (seen live)
   assert.match(readFileSync(`${COCKPIT}ui.css`, 'utf8'), /\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/);
