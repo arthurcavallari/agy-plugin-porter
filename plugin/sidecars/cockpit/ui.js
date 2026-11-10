@@ -78,19 +78,19 @@
       ${section('Audit findings', r.flags, (f) => `${badge(f.severity, SEVERITY[f.severity] ?? 'stopped')} ${esc(f.kind)}${
         f.file ? ` <code>${esc(f.file)}${f.line ? `:${f.line}` : ''}</code>` : ''}`)}
       ${section('Why this tier', r.tierReasons, (x) => esc(x))}
-      <div class="cockpit-actions">
+      <div id="install-row" class="cockpit-actions">
         <button id="install" type="button" class="agy-btn agy-btn-primary"${r.validation?.ok ? '' : ' disabled'}>Install…</button>
       </div>
       <div id="consent" class="agy-consent-bar hidden">
         <span id="consent-text"></span>
         <div class="agy-consent-actions">
           <button id="cancel" type="button" class="agy-btn agy-btn-outline">Cancel</button>
-          <button id="ok" type="button" class="agy-btn agy-btn-primary">Install</button>
+          <button id="ok" type="button" class="agy-btn agy-btn-primary">Confirm install</button>
         </div>
       </div>`;
     $('install').addEventListener('click', confirmInstall);
     $('cancel').addEventListener('click', () => {
-      $('consent').classList.add('hidden');
+      closeConsent();
       $('install').focus();
     });
     $('ok').addEventListener('click', install);
@@ -104,13 +104,20 @@
     $('consent-text').innerHTML = `Install <strong>${esc(p.slug)}</strong> as ${esc(tierOf(p.tier).label)}, with `
       + `${unported} item${unported === 1 ? '' : 's'} not ported and ${flags} audit finding${flags === 1 ? '' : 's'}? `
       + 'You can switch it off later in Customizations > Plugins.';
+    // The bar takes the Install… button's place, so only one install button shows at a time
+    $('install-row').hidden = true;
     $('consent').classList.remove('hidden');
     $('cancel').focus();
   }
 
+  function closeConsent() {
+    $('consent').classList.add('hidden');
+    $('install-row').hidden = false;
+  }
+
   async function install() {
     const p = current;
-    $('consent').classList.add('hidden');
+    closeConsent();
     busy($('install'), 'Installing…');
     status(`Installing ${p.slug}…`);
     try {
