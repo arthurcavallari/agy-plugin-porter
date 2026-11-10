@@ -25,10 +25,10 @@ npx agy-plugin-porter --source ./my-claude-plugin --out ./ported --validate
 agy plugin install ./ported
 ```
 
-`--source` also takes a GitHub repo pinned to a tag, branch or commit: `owner/repo@<ref>`, plus `--path <subfolder>` for monorepos. When the subfolder has no license file, the port gets the one at the repository root. `--install` runs `agy plugin install` on the output for you. Restart Antigravity afterwards so it discovers the new plugin directory.
+`--source` also takes a GitHub repo pinned to a tag, branch or commit: `owner/repo@<ref>`, plus `--path <subfolder>` for monorepos. You can paste a github.com link instead. A link to a folder (`https://github.com/<owner>/<repo>/tree/<ref>/<folder>`) sets both the ref and the path. The part after `tree/` up to the next `/` is the ref, so for a branch name with a `/`, use `owner/repo@<branch>` and `--path`. When the subfolder has no license file, the port gets the one at the repository root. `--install` runs `agy plugin install` on the output for you. Restart Antigravity afterwards so it discovers the new plugin directory.
 
 ```
-agy-porter --source <path|owner/repo@ref> [--path <dir>] [--slug <name>] [--out <dir>]
+agy-porter --source <path|owner/repo@ref|github link> [--path <dir>] [--slug <name>] [--out <dir>]
            [--force] [--validate] [--install] [--agy <path>] [--json]
 ```
 
@@ -111,7 +111,7 @@ The plugin adds:
 - **A detector.** When a conversation starts in a workspace that holds a Claude Code, Gemini CLI, Cursor, Roo/Kilo or Codex plugin, the agent is told once per workspace. It mentions the plugin and doesn't port anything unasked.
 - **A skill, an agent and rules** for porting with the porter, never by hand.
 - **Two MCP tools**, `port_preview` and `port_install` (server `agy-plugin-porter_cli`).
-- **The Plugin Porter pane.** Enter a folder or `owner/repo@<tag>`, read the full port report, then install. The pane uses [`antigravity-sidecar-kit`](https://github.com/arthurcavallari/antigravity-sidecar-kit)'s native components and follows Antigravity's theme, as Hangar does. The build bundles the kit into the plugin, because agy runs no `npm install`. The npm package itself still has no dependencies.
+- **The Plugin Porter pane.** Enter a folder, `owner/repo@<tag>` or a GitHub link, read the full port report, then install. A pasted link to a folder fills in **Source** and **Path** for you. The pane uses [`antigravity-sidecar-kit`](https://github.com/arthurcavallari/antigravity-sidecar-kit)'s native components and follows Antigravity's theme, as Hangar does. The build bundles the kit into the plugin, because agy runs no `npm install`. The npm package itself still has no dependencies.
 
 **Consent.** Every install starts with a preview, which ports into a temp folder and shows the report. An install takes only that preview's output, and only when it gets back the preview's tier and audit-findings digest. That's the same rule Hangar's installer uses. The pane asks you in a consent bar under the report. The agent is told to show you the report and wait for your yes, but only the pane's consent bar is enforced. Previews are kept in a folder only you can access (`%LOCALAPPDATA%\agy-plugin-porter\previews` on Windows, `~/.cache/agy-plugin-porter/previews` elsewhere), never in the shared temp folder, and expire after an hour.
 

@@ -5,7 +5,7 @@ description: Ports a Claude Code, Gemini CLI, Cursor, Roo/Kilo or Codex plugin i
 
 # Port a plugin into Antigravity
 
-1. **Find the source.** A folder path (the workspace, or a subfolder of it), or a GitHub repo as `owner/repo@<tag or commit>`. For a monorepo, also find the subfolder that holds the plugin (`path`).
+1. **Find the source.** A folder path (the workspace, or a subfolder of it), a GitHub repo as `owner/repo@<tag or commit>`, or a github.com link the user gives you. For a monorepo, also find the subfolder that holds the plugin (`path`). A link to a folder (`.../tree/<ref>/<folder>`) already names it, so pass the link as `source` and leave `path` out.
 2. **Preview.** Call `port_preview` (server `agy-plugin-porter_cli`) with `source`, and `path` and `slug` if needed. It can take a minute for a GitHub source.
 3. **Show the report.** Tell the user, in full:
    - the capability tier and why

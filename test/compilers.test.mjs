@@ -298,6 +298,32 @@ test('source specs: refs and owners can never become git options', () => {
   }
 });
 
+test('source specs: a github.com link to a repo or a folder in it', () => {
+  const sha = '0412be76f50ab4f4f8abff3753efa9269fbbca5b';
+  assert.deepEqual(parseSourceSpec(`https://github.com/anthropics/claude-plugins-official/tree/${sha}/plugins/plugin-dev`),
+    { kind: 'github', owner: 'anthropics', repo: 'claude-plugins-official', ref: sha, subPath: 'plugins/plugin-dev' });
+  for (const link of ['https://github.com/a/b', 'https://github.com/a/b/', 'https://github.com/a/b.git', 'http://www.github.com/a/b', 'HTTPS://GitHub.com/a/b']) {
+    assert.deepEqual(parseSourceSpec(link), { kind: 'github', owner: 'a', repo: 'b', ref: null, subPath: null }, link);
+  }
+  assert.deepEqual(parseSourceSpec('https://github.com/a/b/tree/v1.2.3'), { kind: 'github', owner: 'a', repo: 'b', ref: 'v1.2.3', subPath: null });
+  assert.equal(parseSourceSpec('https://github.com/a/b/tree/main/plugins/x/?tab=readme-ov-file#setup').subPath, 'plugins/x');
+  assert.equal(parseSourceSpec('https://github.com/a/b/tree/main/plugins/my%20plugin').subPath, 'plugins/my plugin');
+  assert.throws(() => parseSourceSpec('https://github.com/a/b/blob/main/plugins/x/plugin.json'), /links to a file/);
+  for (const bad of [
+    'https://gitlab.com/a/b', 'https://github.com.evil.example/a/b', 'https://github.com@evil.example/a/b', 'https://github.com/a/b/pulls',
+    'https://github.com/a/b/tree/main/../x', 'https://github.com/a/b/tree/main/%2e%2e/x', 'https://github.com/a/b/tree/main/x%5Cy',
+    'https://github.com/a/b/tree/--upload-pack=x', 'https://github.com/a/b/tree/a%2Fb', 'https://github.com/-a/b', 'https://github.com/a/b/tree/main/%zz',
+  ]) {
+    assert.throws(() => parseSourceSpec(bad), /neither an existing path/, bad);
+  }
+});
+
+test("source: a folder link and a different path don't mix", () => {
+  // Checked before anything is fetched
+  assert.throws(() => resolveSource('https://github.com/a/b/tree/main/plugins/x', { subPath: 'plugins/y' }),
+    /links to the folder "plugins\/x", but the path is "plugins\/y"/);
+});
+
 test('source subPath must stay inside the source', () => {
   const root = tmp();
   mkdirSync(join(root, 'inner'));
