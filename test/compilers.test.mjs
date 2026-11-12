@@ -262,7 +262,7 @@ test('compileRules disambiguates duplicate rule slugs and splitFrontmatter block
 
 test('agents: Claude tools and models', () => {
   assert.deepEqual(mapClaudeTools('Read, Bash(git diff:*), Agent(a:b, c:d), mcp__gh__x, TodoWrite'), {
-    tools: ['invoke_subagent', 'read_file', 'run_command', 'view_file'], unmapped: ['TodoWrite'], mcp: true,
+    tools: ['invoke_subagent', 'manage_task', 'read_file', 'run_command', 'view_file'], unmapped: ['TodoWrite'], mcp: true,
   });
   assert.deepEqual(mapClaudeTools(['Glob']).tools, ['find_by_name']);
   assert.deepEqual(mapClaudeModel('sonnet'), { tier: 'pro' });
@@ -684,5 +684,19 @@ test('PRT-07: fixMcpServers strips passthrough ${VAR} / ${env:VAR} env clobbers,
   ]);
   assert.ok(rep.warnings.some((w) => /removed self-referencing env "GITHUB_TOKEN/.test(w)));
   assert.ok(rep.warnings.some((w) => /removed self-referencing env "CURSOR_KEY/.test(w)));
+});
+
+test('PRT-09: unrestricted Claude agents receive explicit tools + inheritMcp, and reserved built-in names are prefixed', () => {
+  const dir = tmp();
+  write(dir, 'agents/unrestricted.md', '---\nname: unrestricted\ndescription: Full power\n---\nBody\n');
+  write(dir, 'agents/browser.md', '---\nname: browser\ndescription: Browser helper\ntools: Bash\n---\nBody\n');
+  write(dir, 'agents/review-agent.md', '---\nname: review-agent\ndescription: Review helper\ntools: Read\n---\nBody\n');
+  const rep = compileModes(dir, { srcDir: dir, ecosystems: ['claude'], slug: 'acme' });
+  const unres = fm(dir, 'agents/unrestricted.md').data;
+  assert.ok(Array.isArray(unres.tools) && unres.tools.includes('run_command') && unres.tools.includes('manage_task') && unres.tools.includes('edit_file'));
+  assert.equal(unres.inheritMcp, true);
+  assert.deepEqual(fm(dir, 'agents/acme-browser.md').data.tools, ['manage_task', 'run_command']);
+  assert.equal(existsSync(join(dir, 'agents/acme-review-agent.md')), true);
+  assert.equal(rep.warnings.filter((w) => /built-in agy agent name/.test(w)).length, 2);
 });
 
