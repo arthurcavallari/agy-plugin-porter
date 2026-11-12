@@ -65,6 +65,15 @@ test('splitFrontmatter and formatFrontmatter', () => {
   assert.equal(out, '---\nname: a\ndescription: "Use when: x"\ntools:\n  - view_file\nempty: []\non: true\n---\n\nbody\n');
   assert.deepEqual(splitFrontmatter(out).data, { name: 'a', description: 'Use when: x', tools: ['view_file'], empty: [], on: true });
   assert.equal(splitFrontmatter(formatFrontmatter({ v: 'true', n: '12' }, '')).data.v, 'true');
+
+  const nested = formatFrontmatter({
+    name: 'swarm-helper',
+    description: 'Coordinate workers',
+    metadata: { icon: 'network_node', logo: 'assets/logo.svg', empty: null },
+  }, '\n# Body\n');
+  assert.doesNotMatch(nested, /\[object Object\]/);
+  assert.equal(nested, '---\nname: swarm-helper\ndescription: Coordinate workers\nmetadata:\n  icon: network_node\n  logo: assets/logo.svg\n---\n\n# Body\n');
+  assert.deepEqual(splitFrontmatter(nested).data.metadata, { icon: 'network_node', logo: 'assets/logo.svg' });
 });
 
 test('flow lists and maps can span lines', () => {
