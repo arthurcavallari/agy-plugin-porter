@@ -140,6 +140,43 @@ test('skills: Codex .agents/skills are copied in', () => {
   assert.equal(fm(dir, 'skills/codex-skill/SKILL.md').data.name, 'codex-skill');
 });
 
+test('PRT-01 & PRT-02: compileSkills preserves metadata.{icon,logo}, disable-model-invocation, and maps user-invocable: false -> disable-slash-command: true', () => {
+  const dir = tmp();
+  write(dir, 'skills/deploy-prod/SKILL.md', [
+    '---',
+    'name: deploy-prod',
+    'description: Deploy production cluster',
+    'disable-model-invocation: true',
+    'metadata:',
+    '  icon: rocket_launch',
+    '  logo: ${CLAUDE_PLUGIN_ROOT}/assets/logo.svg',
+    '---',
+    '',
+    '# Deploy',
+  ].join('\n'));
+  write(dir, 'skills/bg-context/SKILL.md', [
+    '---',
+    'name: bg-context',
+    'description: Background domain context',
+    'user-invocable: false',
+    '---',
+    '',
+    '# Context',
+  ].join('\n'));
+  compileSkills(dir, { srcDir: dir, ecosystems: ['claude'] });
+  assert.deepEqual(fm(dir, 'skills/deploy-prod/SKILL.md').data, {
+    name: 'deploy-prod',
+    description: 'Deploy production cluster',
+    'disable-model-invocation': true,
+    metadata: { icon: 'rocket_launch', logo: './assets/logo.svg' },
+  });
+  assert.deepEqual(fm(dir, 'skills/bg-context/SKILL.md').data, {
+    name: 'bg-context',
+    description: 'Background domain context',
+    'disable-slash-command': true,
+  });
+});
+
 test('rules: Cursor triggers', () => {
   assert.deepEqual(cursorTrigger({ alwaysApply: true, globs: '*.ts' }), { trigger: 'always_on' });
   assert.deepEqual(cursorTrigger({ globs: ['a/*.ts', 'b/*.ts'], description: 'd' }), { trigger: 'glob', globs: 'a/*.ts,b/*.ts', description: 'd' });
