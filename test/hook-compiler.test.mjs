@@ -103,6 +103,12 @@ test('remapMatcher maps mcp__* tool matchers to call_mcp_tool|mcp_tool and eager
 
   // Already-mapped agy MCP tool names
   assert.deepEqual(remapMatcher('call_mcp_tool|mcp_tool', 'claude'), { matcher: 'call_mcp_tool|mcp_tool', unmapped: [] });
+
+  // PRT-05: plugin-bundled <slug>_<server> eager MCP tool names
+  assert.deepEqual(remapMatcher('mcp__db__query', 'claude', { slug: 'my-plugin' }), {
+    matcher: 'call_mcp_tool|mcp_db_query|mcp_my-plugin_db_query|mcp_tool',
+    unmapped: [],
+  });
 });
 
 test('compileHooks preserves narrow source matcher in shimConfig and guards prototype event keys', () => {

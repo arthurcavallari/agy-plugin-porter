@@ -57,9 +57,12 @@ const renameKeys = (obj, renames) => Object.fromEntries(
   Object.entries(obj ?? {}).map(([k, v]) => [renames[k] ?? k, v]));
 const invert = (renames) => Object.fromEntries(Object.entries(renames).map(([k, v]) => [v, k]));
 
-export function toSourceTool(toolCall, dialect, matcher) {
+export function toSourceTool(toolCall, dialect, matcher, slug = '') {
   if ((toolCall?.name === 'call_mcp_tool' || toolCall?.name === 'mcp_tool') && toolCall?.args) {
-    const server = toolCall.args.ServerName ?? toolCall.args.server_name ?? '';
+    let server = toolCall.args.ServerName ?? toolCall.args.server_name ?? '';
+    if (slug && typeof server === 'string' && server.startsWith(`${slug}_`)) {
+      server = server.slice(slug.length + 1);
+    }
     const tool = toolCall.args.ToolName ?? toolCall.args.tool_name ?? '';
     const rawArgs = toolCall.args.Arguments ?? toolCall.args.arguments ?? {};
     return {
@@ -68,7 +71,12 @@ export function toSourceTool(toolCall, dialect, matcher) {
     };
   }
   if (dialect !== 'gemini' && typeof toolCall?.name === 'string' && toolCall.name.startsWith('mcp_') && toolCall.name !== 'mcp_tool') {
-    const rest = toolCall.name.slice(4);
+    let rest = toolCall.name.slice(4);
+    if (slug) {
+      const normSlug = slug.replace(/-/g, '_');
+      if (rest.startsWith(`${slug}_`)) rest = rest.slice(slug.length + 1);
+      else if (rest.startsWith(`${normSlug}_`)) rest = rest.slice(normSlug.length + 1);
+    }
     if (typeof matcher === 'string') {
       for (const m of matcher.matchAll(/mcp__([A-Za-z0-9._-]+)__/g)) {
         const srv = m[1];
@@ -102,10 +110,10 @@ export function toSourcePayload(entry, payload) {
   else base.permission_mode = 'default';
   switch (entry.event) {
     case 'PreToolUse':
-      return { ...base, ...toSourceTool(payload.toolCall, entry.dialect, entry.matcher) };
+      return { ...base, ...toSourceTool(payload.toolCall, entry.dialect, entry.matcher, entry.slug) };
     case 'PostToolUse':
-      if (entry.sourceEvent === 'PostToolUseFailure') return { ...base, ...toSourceTool(payload.toolCall, entry.dialect, entry.matcher), error: payload.error ?? '' };
-      return { ...base, ...toSourceTool(payload.toolCall, entry.dialect, entry.matcher), tool_response: payload.error ? { error: payload.error } : {} };
+      if (entry.sourceEvent === 'PostToolUseFailure') return { ...base, ...toSourceTool(payload.toolCall, entry.dialect, entry.matcher, entry.slug), error: payload.error ?? '' };
+      return { ...base, ...toSourceTool(payload.toolCall, entry.dialect, entry.matcher, entry.slug), tool_response: payload.error ? { error: payload.error } : {} };
     case 'SessionStart':
       return { ...base, source: 'startup' };
     case 'Stop':
@@ -205,7 +213,7 @@ export function shouldRun(entry, payload) {
     if (Boolean(payload.error) !== (entry.sourceEvent === 'PostToolUseFailure')) return false;
   }
   if ((entry.event === 'PreToolUse' || entry.event === 'PostToolUse') && entry.matcher) {
-    const { tool_name } = toSourceTool(payload?.toolCall, entry.dialect, entry.matcher);
+    const { tool_name } = toSourceTool(payload?.toolCall, entry.dialect, entry.matcher, entry.slug);
     if (!matchesSourceMatcher(entry.matcher, tool_name, payload?.toolCall?.name)) return false;
   }
   return true;
@@ -386,8 +394,9 @@ async function main() {
     try { payload = JSON.parse(readFileSync(0, 'utf8').replace(/^﻿/, '') || '{}'); } catch {}
     const pluginRoot = fileURLToPath(new URL('..', import.meta.url)).replace(/[\\/]$/, '');
     const config = JSON.parse(readFileSync(new URL('./hook-shim.json', import.meta.url), 'utf8'));
-    const entry = config.hooks?.[hook];
-    if (!entry) throw new Error(`no hook "${hook}" in hook-shim.json`);
+    const rawEntry = config.hooks?.[hook];
+    if (!rawEntry) throw new Error(`no hook "${hook}" in hook-shim.json`);
+    const entry = { slug: config.slug || basename(pluginRoot), ...rawEntry };
     if (!shouldRun(entry, payload)) {
       process.stdout.write(out, () => process.exit(0));
       return;

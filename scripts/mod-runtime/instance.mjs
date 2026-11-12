@@ -200,7 +200,7 @@ export class Instance {
   // PreToolUse: run the tool.call chain until a handler returns or calls next().
   // A handler waiting in next() resumes at PostToolUse (plan §5.2).
   async preToolUse(payload) {
-    const { e, args } = toClaudeCall(payload.toolCall);
+    const { e, args } = toClaudeCall(payload.toolCall, this.engine.mod.plugin);
     let reached;
     const reachedNext = new Promise((r) => { reached = r; });
     const core = (e2) => {
@@ -225,7 +225,7 @@ export class Instance {
   // carries its Pre's stepIdx), else the oldest one for the same tool.
   postToolUse(payload) {
     this.dropStale();
-    const { e } = toClaudeCall(payload.toolCall);
+    const { e } = toClaudeCall(payload.toolCall, this.engine.mod.plugin);
     let i = this.pending.findIndex((p) => p.stepIdx !== undefined && p.stepIdx === payload.stepIdx);
     const by = i >= 0 ? 'stepIdx' : 'fifo';
     if (i < 0) i = this.pending.findIndex((p) => p.tool === e.tool);

@@ -19,12 +19,15 @@ export const claudeToolName = (agyName) => AGY_TO_CLAUDE[agyName] ?? agyName;
 function safeJson(text) { try { return JSON.parse(text); } catch { return {}; } }
 
 // Returns {e, args}: the Claude-shaped event and the raw agy args.
-export function toClaudeCall(toolCall) {
+export function toClaudeCall(toolCall, pluginSlug = '') {
   const raw = typeof toolCall?.args === 'string' ? safeJson(toolCall.args) : toolCall?.args;
   const args = raw && typeof raw === 'object' ? raw : {};
   const toolName = toolCall?.name ?? '';
   if ((toolName === 'call_mcp_tool' || toolName === 'mcp_tool') && (args.ServerName || args.server_name) && (args.ToolName || args.tool_name)) {
-    const server = args.ServerName ?? args.server_name;
+    const rawServer = args.ServerName ?? args.server_name;
+    const server = pluginSlug && typeof rawServer === 'string' && rawServer.startsWith(`${pluginSlug}_`)
+      ? rawServer.slice(pluginSlug.length + 1)
+      : rawServer;
     const tool = args.ToolName ?? args.tool_name;
     const argKey = 'Arguments' in args ? 'Arguments' : ('arguments' in args ? 'arguments' : 'Arguments');
     const rawInner = args[argKey];
@@ -39,7 +42,12 @@ export function toClaudeCall(toolCall) {
   }
   let mappedTool = claudeToolName(toolName);
   if (mappedTool === toolName && toolName.startsWith('mcp_') && toolName !== 'mcp_tool') {
-    const rest = toolName.slice(4);
+    let rest = toolCall.name.slice(4);
+    if (pluginSlug) {
+      const normSlug = pluginSlug.replace(/-/g, '_');
+      if (rest.startsWith(`${pluginSlug}_`)) rest = rest.slice(pluginSlug.length + 1);
+      else if (rest.startsWith(`${normSlug}_`)) rest = rest.slice(normSlug.length + 1);
+    }
     const idx = rest.indexOf('_');
     if (idx > 0) mappedTool = `mcp__${rest.slice(0, idx)}__${rest.slice(idx + 1)}`;
   }

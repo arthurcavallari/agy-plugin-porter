@@ -389,3 +389,13 @@ test('PRT-03: buildHookVars and expandCommand support PLUGIN_ROOT, PLUGIN_DATA, 
   assert.match(geminiVars.PLUGIN_DATA, /plugin_data[\\/]gem$/);
 });
 
+test('PRT-05: shouldRun and toSourcePayload strip plugin <slug>_ prefix on both eager and call_mcp_tool MCP calls', () => {
+  const entry = { event: 'PreToolUse', sourceEvent: 'PreToolUse', dialect: 'claude', slug: 'my-plugin', matcher: 'mcp__db__query' };
+  const eager = { toolCall: { name: 'mcp_my-plugin_db_query', args: { sql: 'SELECT 1' } } };
+  const lazy = { toolCall: { name: 'call_mcp_tool', args: { ServerName: 'my-plugin_db', ToolName: 'query', Arguments: { sql: 'SELECT 1' } } } };
+  assert.equal(shouldRun(entry, eager), true);
+  assert.equal(toSourcePayload(entry, eager).tool_name, 'mcp__db__query');
+  assert.equal(shouldRun(entry, lazy), true);
+  assert.equal(toSourcePayload(entry, lazy).tool_name, 'mcp__db__query');
+});
+

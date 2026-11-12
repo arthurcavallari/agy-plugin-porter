@@ -150,6 +150,19 @@ test('PORTER-06: toClaudeCall and overwriteOf unwrap and re-wrap call_mcp_tool a
   });
   const eagerOver = overwriteOf(eager.args, eager.e, { ...eager.e, title: 'fixed' });
   assert.deepEqual(eagerOver, { title: 'fixed' });
+
+  // PRT-05: plugin-bundled <slug>_<server> stripping while keeping ServerName intact for overwrite
+  const namespaced = toClaudeCall({
+    name: 'call_mcp_tool',
+    args: { ServerName: 'my-plugin_db', ToolName: 'query', Arguments: { sql: 'SELECT 1' } },
+  }, 'my-plugin');
+  assert.equal(namespaced.e.tool, 'mcp__db__query');
+  assert.deepEqual(overwriteOf(namespaced.args, namespaced.e, { ...namespaced.e, sql: 'SELECT 2' }), {
+    ServerName: 'my-plugin_db',
+    ToolName: 'query',
+    Arguments: { sql: 'SELECT 2' },
+  });
+  assert.equal(toClaudeCall({ name: 'mcp_my-plugin_db_query', args: {} }, 'my-plugin').e.tool, 'mcp__db__query');
 });
 
 
