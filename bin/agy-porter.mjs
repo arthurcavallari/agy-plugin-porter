@@ -80,7 +80,7 @@ async function main() {
     if (opts.install) {
       const run = spawnAgy(opts.agy ?? 'agy', ['plugin', 'install', outDir], { stdio: 'inherit' });
       if (run.status !== 0) return run.status ?? 1;
-      console.log('Installed. Restart Antigravity to load a new plugin directory.');
+      console.log('Installed. Antigravity picks up newly installed plugins automatically within a few seconds (no restart needed).');
     }
     return 0;
   } catch (err) {

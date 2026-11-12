@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "cli": {
-      "command": "agy-node",
+      "command": "node",
       "args": ["${PLUGIN_ROOT}/mcp/server.mjs"]
     }
   }

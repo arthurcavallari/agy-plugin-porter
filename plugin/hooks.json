@@ -3,7 +3,7 @@
     "SessionStart": [
       {
         "type": "command",
-        "command": "agy-node scripts/session-start.mjs",
+        "command": "node scripts/session-start.mjs",
         "timeout": 10
       }
     ]

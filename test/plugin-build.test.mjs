@@ -31,8 +31,8 @@ test('build: plugin/ plus copies of lib/, bin/ and the runtime; 7-key manifest a
   assert.equal(manifest.version, pkg.version);
   assert.deepEqual(Object.keys(manifest).filter((k) => !['name', 'displayName', 'description', 'version', 'logo', 'suggestedPrompts', 'disabled'].includes(k)), []);
   assert.ok(manifest.suggestedPrompts.length <= 3);
-  assert.deepEqual(json(dir, 'hooks.json'), { 'agy-plugin-porter': { SessionStart: [{ type: 'command', command: 'agy-node scripts/session-start.mjs', timeout: 10 }] } });
-  assert.deepEqual(json(dir, 'mcp_config.json').mcpServers.cli, { command: 'agy-node', args: ['${PLUGIN_ROOT}/mcp/server.mjs'] });
+  assert.deepEqual(json(dir, 'hooks.json'), { 'agy-plugin-porter': { SessionStart: [{ type: 'command', command: 'node scripts/session-start.mjs', timeout: 10 }] } });
+  assert.deepEqual(json(dir, 'mcp_config.json').mcpServers.cli, { command: 'node', args: ['${PLUGIN_ROOT}/mcp/server.mjs'] });
   for (const rel of COPIED.filter((r) => r !== 'LICENSE')) {
     const src = rel.endsWith('.mjs') ? [''] : files(join(ROOT, rel));
     for (const f of src) assert.equal(readFileSync(join(dir, rel, f), 'utf8'), readFileSync(join(ROOT, rel, f), 'utf8'), `${rel}/${f}`);
@@ -64,14 +64,13 @@ test('build: the tarball holds one top folder, with its sha256 beside it', () =>
 test('agy plugin validate --strict accepts the built plugin', { skip: !hasAgy && 'agy not on PATH' }, () => {
   const { dir } = buildPlugin({ outRoot: tempDir('porter-build-'), tar: false });
   const home = tempDir('porter-home-');
-  const run = spawnSync('agy', ['plugin', 'validate', dir, '--json'], {
+  const run = spawnSync('agy', ['plugin', 'validate', dir, '--strict', '--json'], {
     encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home, NO_COLOR: '1' },
   });
   assert.equal(run.status, 0, run.stdout + run.stderr);
   const { components, findings } = JSON.parse(run.stdout);
   assert.deepEqual(components, { agents: 1, hooks: 1, mcpServers: 1, rules: 1, sidecars: 1, skills: 1 });
-  // agy-node is on PATH only inside the app (or with %APPDATA%\Antigravity\bin added).
-  assert.deepEqual(findings.filter((f) => f.severity !== 'note' && !/agy-node/.test(f.message)), []);
+  assert.deepEqual(findings.filter((f) => f.severity !== 'note'), []);
 });
 
 test('dist/plugin/agy-plugin-porter stays synchronized with lib/ and scripts/ when present', () => {

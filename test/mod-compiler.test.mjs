@@ -27,7 +27,7 @@ test('fixture: compiles into a sidecar with forwarding hooks, tier 3', tsx, () =
   const hooks = json(pluginDir, 'hooks.json')['fixture-claude-mod-mod-pane'];
   assert.deepEqual(Object.keys(hooks), ['SessionStart', 'PreToolUse', 'PostToolUse', 'Stop']);
   assert.equal(hooks.PreToolUse[0].matcher, 'run_command');
-  assert.equal(hooks.PreToolUse[0].hooks[0].command, 'agy-node sidecars/pane/hook.mjs PreToolUse');
+  assert.equal(hooks.PreToolUse[0].hooks[0].command, 'node sidecars/pane/hook.mjs PreToolUse');
   // No commands or tools, so no MCP server and no skills.
   assert.equal(existsSync(join(pluginDir, 'mcp_config.json')), false);
   const code = readFileSync(join(pluginDir, 'sidecars/pane/mod/hooks/register.mjs'), 'utf8');
@@ -107,7 +107,7 @@ test('commands and tools: a short "ui" MCP server key within 64-char limit, one 
   const { pluginDir, report } = compileSource(src, { slug: 'notes-port' });
   assert.ok(report.ported.includes('mcp:ui') && report.ported.includes('command:/notes'), report.ported.join(', '));
   assert.deepEqual(json(pluginDir, 'mcp_config.json').mcpServers.ui, {
-    command: 'agy-node', args: ['${PLUGIN_ROOT}/sidecars/pane/mcp-entry.mjs'],
+    command: 'node', args: ['${PLUGIN_ROOT}/sidecars/pane/mcp-entry.mjs'],
   });
   const skill = readFileSync(join(pluginDir, 'skills/notes/SKILL.md'), 'utf8');
   assert.match(skill, /^name: notes$/m);

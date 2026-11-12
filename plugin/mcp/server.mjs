@@ -59,7 +59,7 @@ async function call(name, args) {
   if (name === 'port_preview') return previewText(await createPreview(args));
   if (name === 'port_install') {
     const r = await installPreview(args);
-    return `Installed ${r.slug}. The user can switch it off in Customizations > Plugins, and should switch it off before \`agy plugin uninstall ${r.slug}\`.\n${r.output}`;
+    return `Installed ${r.slug}. Antigravity picks up newly installed plugins automatically within a few seconds (no restart needed). The user can switch it off in Customizations > Plugins, and should switch it off before \`agy plugin uninstall ${r.slug}\`.\n${r.output}`;
   }
   throw new Error(`unknown tool ${name}`);
 }
