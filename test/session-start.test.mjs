@@ -60,3 +60,21 @@ test('PORTER-08: test/agy-stub.mjs exits 0 when invoked with no arguments under 
   assert.equal(r.status, 0);
 });
 
+test('PRT-03: session-start.mjs prefers process.env.PLUGIN_DATA over hardcoded ~/.gemini/antigravity/plugin_data', () => {
+  const ws = tempDir('porter-ws-');
+  cpSync(fixture('claude'), ws, { recursive: true });
+  const pdata = tempDir('porter-pdata-');
+  const fakeHome = tempDir('porter-home-');
+  const env = { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome, PLUGIN_DATA: pdata };
+  delete env.AGY_PORTER_STATE_DIR;
+  const r = spawnSync(process.execPath, ['scripts/session-start.mjs'], {
+    cwd: plugin, input: JSON.stringify({ workspacePaths: [ws] }), encoding: 'utf8', env,
+  });
+  assert.equal(r.status, 0);
+  assert.match(message(JSON.parse(r.stdout)), /a Claude Code plugin/);
+  const second = spawnSync(process.execPath, ['scripts/session-start.mjs'], {
+    cwd: plugin, input: JSON.stringify({ workspacePaths: [ws] }), encoding: 'utf8', env,
+  });
+  assert.deepEqual(JSON.parse(second.stdout), {});
+});
+

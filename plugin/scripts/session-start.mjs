@@ -13,10 +13,11 @@ const NAMES = { claude: 'a Claude Code plugin', gemini: 'a Gemini CLI extension'
 const done = (out) => { process.stdout.write(JSON.stringify(out), () => process.exit(0)); };
 setTimeout(() => done({}), 3000).unref();
 
-// The app makes ~/.gemini/antigravity/plugin_data/<plugin>/ for each plugin; make it if it's missing.
+// Antigravity 2.31.0+ passes PLUGIN_DATA in the hook process environment; fall back to ~/.gemini/antigravity/plugin_data/<plugin>/.
 function stateFile() {
-  if (process.env.AGY_PORTER_STATE_DIR) return join(process.env.AGY_PORTER_STATE_DIR, 'session-start.json');
-  const dir = join(homedir(), '.gemini', 'antigravity', 'plugin_data', 'agy-plugin-porter');
+  const dir = process.env.AGY_PORTER_STATE_DIR?.trim()
+    || process.env.PLUGIN_DATA?.trim()
+    || join(homedir(), '.gemini', 'antigravity', 'plugin_data', 'agy-plugin-porter');
   mkdirSync(dir, { recursive: true });
   return join(dir, 'session-start.json');
 }

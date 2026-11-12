@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { detect } from '../lib/detector.mjs';
 import { compileHooks, writeHookPort } from '../lib/hook-compiler.mjs';
-import { expandCommand, resolveHookSpawn, runCommand, shouldRun, toSourcePayload, toSourceTool, translateResult } from '../scripts/hook-shim.mjs';
+import { buildHookVars, expandCommand, resolveHookSpawn, runCommand, shouldRun, toSourcePayload, toSourceTool, translateResult } from '../scripts/hook-shim.mjs';
 import { removeLater, tempDir } from './temp.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
@@ -373,5 +373,19 @@ test('the shim runs when its plugin is reached through a linked folder', () => {
   assert.equal(run.status, 0, run.stderr);
   assert.ok(run.stdout, `the shim printed nothing: ${run.stderr}`);
   assert.deepEqual(JSON.parse(run.stdout), { decision: 'deny', reason: 'linked' });
+});
+
+test('PRT-03: buildHookVars and expandCommand support PLUGIN_ROOT, PLUGIN_DATA, CLAUDE_PLUGIN_DATA, GEMINI_PLUGIN_PATH and %VAR%', () => {
+  const claudeVars = buildHookVars('claude', { pluginRoot: 'C:/plug/demo', projectDir: 'C:/ws', env: { PLUGIN_DATA: 'C:/pdata/demo' } });
+  assert.equal(claudeVars.CLAUDE_PLUGIN_DATA, 'C:/pdata/demo');
+  assert.equal(claudeVars.PLUGIN_ROOT, 'C:/plug/demo');
+  assert.equal(claudeVars.PLUGIN_DATA, 'C:/pdata/demo');
+  assert.equal(
+    expandCommand('node "${PLUGIN_ROOT}/s.mjs" "${CLAUDE_PLUGIN_DATA}/db" %PLUGIN_DATA%', claudeVars, { posix: true }),
+    'node "C:/plug/demo/s.mjs" "C:/pdata/demo/db" C:/pdata/demo',
+  );
+  const geminiVars = buildHookVars('gemini', { pluginRoot: 'C:/plug/gem', projectDir: 'C:/ws', env: {} });
+  assert.equal(geminiVars.GEMINI_PLUGIN_PATH, 'C:/plug/gem');
+  assert.match(geminiVars.PLUGIN_DATA, /plugin_data[\\/]gem$/);
 });
 

@@ -12,7 +12,8 @@
 // - SessionStart / Stop / PostToolUse: stdout must be a JSON object.
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { isAbsolute, resolve, sep } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // agy tool name -> source tool name and arg renames. Arg names are the agy CLI's
@@ -114,17 +115,17 @@ export function toSourcePayload(entry, payload) {
   }
 }
 
-// Expands the plugin-path variables Claude Code and Gemini CLI provide, so the
-// command works under cmd.exe too. Unknown variables are left to the shell.
+// Expands the plugin-path variables Claude Code, Gemini CLI and Antigravity provide,
+// so the command works under cmd.exe too. Unknown variables are left to the shell.
 export function expandCommand(command, vars, { posix = false } = {}) {
   const slash = posix ? '/' : sep;
   const norm = (v) => (posix && typeof v === 'string' ? v.replace(/\\/g, '/') : v);
   const values = { ...Object.fromEntries(Object.entries(vars ?? {}).map(([k, v]) => [k, norm(v)])), '/': slash };
-  const VAR_RE = /\$\{([A-Za-z_]\w*|\/)\}|\$([A-Za-z_]\w*)/g;
+  const VAR_RE = /\$\{([A-Za-z_]\w*|\/)\}|\$([A-Za-z_]\w*)|%([A-Za-z_]\w*)%/g;
   return command.replace(/"[^"]*"|'[^']*'|\S+/g, (token) => {
     let expandedAny = false;
-    const expanded = token.replace(VAR_RE, (whole, braced, bare) => {
-      const name = braced ?? bare;
+    const expanded = token.replace(VAR_RE, (whole, braced, bare, win) => {
+      const name = braced ?? bare ?? win;
       if (Object.hasOwn(values, name)) {
         if (name !== '/') expandedAny = true;
         return values[name];
@@ -137,6 +138,15 @@ export function expandCommand(command, vars, { posix = false } = {}) {
     }
     return expanded;
   });
+}
+
+export function buildHookVars(dialect, { pluginRoot, projectDir, env = process.env }) {
+  const root = env.PLUGIN_ROOT?.trim() || pluginRoot;
+  const home = env.HOME?.trim() || env.USERPROFILE?.trim() || homedir();
+  const data = env.PLUGIN_DATA?.trim() || join(home, '.gemini', 'antigravity', 'plugin_data', basename(pluginRoot));
+  return dialect === 'gemini'
+    ? { PLUGIN_ROOT: root, PLUGIN_DATA: data, extensionPath: root, GEMINI_PLUGIN_PATH: root, GEMINI_PROJECT_DIR: projectDir, CLAUDE_PROJECT_DIR: projectDir }
+    : { PLUGIN_ROOT: root, PLUGIN_DATA: data, CLAUDE_PLUGIN_ROOT: root, CLAUDE_PLUGIN_DATA: data, CLAUDE_PROJECT_DIR: projectDir };
 }
 
 const NO_OPINION = { PreToolUse: '' };
@@ -383,9 +393,7 @@ async function main() {
       return;
     }
     const projectDir = payload.workspacePaths?.[0] ?? process.cwd();
-    const vars = entry.dialect === 'gemini'
-      ? { extensionPath: pluginRoot, GEMINI_PROJECT_DIR: projectDir, CLAUDE_PROJECT_DIR: projectDir }
-      : { CLAUDE_PLUGIN_ROOT: pluginRoot, CLAUDE_PROJECT_DIR: projectDir };
+    const vars = buildHookVars(entry.dialect, { pluginRoot, projectDir, env: process.env });
     const probeSpec = resolveHookSpawn(expandCommand(entry.command, vars, { posix: true }), process.platform, pluginRoot);
     const usePosix = process.platform === 'win32' && !probeSpec.shell;
     const envVars = usePosix ? Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, v.replace(/\\/g, '/')])) : vars;
