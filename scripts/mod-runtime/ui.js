@@ -121,9 +121,18 @@
     main.replaceChildren(pane.tree ? draw(pane.tree, act) : note('empty', '(empty)'));
   }
 
-  // Hotkeys of the active pane's buttons, when no field has focus.
+  // Hotkeys of the active pane's buttons, when no field has focus; modifier chords forward to host when SDK preload is absent.
   document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey || /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName ?? '')) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      if (window.parent && window.parent !== window && (!window.sidecar || window.sidecar.__fallback)) {
+        window.parent.postMessage?.({
+          type: 'sidecar-key-event',
+          payload: { type: 'keydown', key: e.key, code: e.code, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, altKey: e.altKey },
+        }, '*');
+      }
+      return;
+    }
+    if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName ?? '')) return;
     const btn = $('pane').querySelector(`button[data-hotkey="${CSS.escape(e.key)}"]`);
     if (btn) { e.preventDefault(); btn.click(); }
   });

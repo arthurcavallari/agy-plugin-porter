@@ -52,6 +52,13 @@ test('initialize and tools/list: port_preview and port_install', async () => {
   const { tools } = (await rpc('tools/list', {})).result;
   assert.deepEqual(tools.map((t) => t.name), ['port_preview', 'port_install']);
   assert.deepEqual(tools[1].inputSchema.required, ['previewId', 'acceptedTier']);
+
+  // PRT-13: MCP 2026-07-28 stateless discovery + prompts/list + resources/list
+  const disc = await rpc('server/discover', { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } });
+  assert.ok(disc.result.supportedVersions.includes('2026-07-28'));
+  assert.equal(disc.result.resultType, 'complete');
+  assert.deepEqual((await rpc('prompts/list', {})).result.prompts, []);
+  assert.deepEqual((await rpc('resources/list', {})).result.resources, []);
 });
 
 test('port_preview reports; port_install refuses other consent, then installs the preview', async () => {

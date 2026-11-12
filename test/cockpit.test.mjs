@@ -45,6 +45,11 @@ test('serves sidecar-kit assets from the bundled kit, without a token, even with
   const host = await fetch(`${base()}/compiled_tailwind.css`);
   assert.equal(host.status, 200, 'the host stylesheet route answers even when there is no Language Server to fetch from');
   assert.match(host.headers.get('content-type'), /text\/css/);
+
+  // PRT-13: /preload.js always serves JavaScript (never 404 JSON blocked by nosniff)
+  const preload = await fetch(`${base()}/preload.js`);
+  assert.equal(preload.status, 200);
+  assert.match(preload.headers.get('content-type'), /application\/javascript/);
 });
 
 test('the view files load without a token; the API needs one', async () => {

@@ -56,10 +56,17 @@ function readJson(req) {
   });
 }
 
-// The SDK's preload.js gives the view window.sidecar. Same lookup as the mod runtime.
+// The SDK's preload.js gives the view window.sidecar. Same lookup as the mod runtime,
+// with a safe JS stub when running standalone outside Antigravity Desktop.
+const FALLBACK_PRELOAD_JS = `(() => {
+  if (window.sidecar) return;
+  const p = new URLSearchParams(location.search);
+  window.sidecar = { conversationId: p.get('conversationId') || '', getWorkspaceUris: async () => [], onWorkspaceChange: () => () => {}, ui: {} };
+})();\n`;
+
 function preloadJs() {
   const appDir = process.env.ANTIGRAVITY_APP_DATA_DIR?.trim() || join(homedir(), '.gemini', 'antigravity');
-  try { return readFileSync(join(appDir, 'lib', 'node_modules', 'sidecar_sdk', 'preload.js'), 'utf8'); } catch { return null; }
+  try { return readFileSync(join(appDir, 'lib', 'node_modules', 'sidecar_sdk', 'preload.js'), 'utf8'); } catch { return FALLBACK_PRELOAD_JS; }
 }
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -105,8 +112,7 @@ function tokenOk(t) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${LOOPBACK}`);
   if (req.method === 'GET' && url.pathname === '/preload.js') {
-    const js = preloadJs();
-    return js ? send(res, 200, js, 'application/javascript; charset=utf-8') : send(res, 404, { error: 'sidecar_sdk preload.js not found' });
+    return send(res, 200, preloadJs(), 'application/javascript; charset=utf-8');
   }
   if (req.method === 'GET' && Object.hasOwn(STATIC, url.pathname)) {
     return send(res, 200, readFileSync(join(import.meta.dirname, url.pathname.slice(1)), 'utf8'), `${STATIC[url.pathname]}; charset=utf-8`);

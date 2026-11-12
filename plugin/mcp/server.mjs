@@ -69,10 +69,34 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
   try { msg = JSON.parse(line); } catch { return; }
   const { id, method, params = {} } = msg ?? {};
   switch (method) {
+    case 'server/discover':
+      return write({
+        id,
+        result: {
+          supportedVersions: ['2026-07-28', '2025-11-25', '2025-06-18'],
+          capabilities: { tools: {} },
+          resultType: 'complete',
+          ttlMs: 0,
+          cacheScope: 'private',
+          _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'agy-plugin-porter', version: VERSION } },
+        },
+      });
+    case 'subscriptions/listen':
+      return write({
+        method: 'notifications/subscriptions/acknowledged',
+        params: {
+          notifications: params.notifications ?? {},
+          _meta: { 'io.modelcontextprotocol/subscriptionId': id },
+        },
+      });
     case 'initialize':
       return write({ id, result: { protocolVersion: params.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'agy-plugin-porter', version: VERSION } } });
     case 'ping':
       return write({ id, result: {} });
+    case 'prompts/list':
+      return write({ id, result: { prompts: [] } });
+    case 'resources/list':
+      return write({ id, result: { resources: [] } });
     case 'tools/list':
       return write({ id, result: { tools: TOOLS } });
     case 'tools/call':

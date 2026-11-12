@@ -65,3 +65,18 @@ test('isUiMod only matches a modules array', () => {
   assert.equal(isUiMod({ hooks: {} }), false);
   assert.equal(isUiMod(null), false);
 });
+
+test('PRT-13: detect recognizes Agent Plugins 1.0.0 mcp.json ($schema) and sidecars/*/sidecar.json as native antigravity', () => {
+  const dir = tempDir('porter-ap-');
+  mkdirSync(join(dir, 'sidecars/board'), { recursive: true });
+  writeFileSync(join(dir, 'mcp.json'), JSON.stringify({
+    $schema: 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json',
+    mcpServers: { api: { command: 'node', args: ['./srv.mjs'] } },
+  }));
+  writeFileSync(join(dir, 'sidecars/board/sidecar.json'), JSON.stringify({
+    command: 'node', args: ['s.mjs'], env: { BOARD_GRAPH: '${flag:enable-swarm-graph-tab}' },
+  }));
+  const found = detect(dir);
+  assert.deepEqual(found.ecosystems, ['antigravity']);
+  assert.equal(found.manifestless, false);
+});
