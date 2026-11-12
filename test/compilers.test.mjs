@@ -24,12 +24,37 @@ const write = (dir, rel, text) => {
 };
 const fm = (dir, rel) => splitFrontmatter(readFileSync(join(dir, rel), 'utf8'));
 
-test('manifest: 7 keys, slug as name, dropped keys reported', () => {
+test('manifest: preserves 2.30+ metadata keys, normalizes string author, reports unsupported dropped keys', () => {
   const report = emptyReport();
-  const out = buildManifest({ name: 'Orig', description: ' d ', version: '1.0.0', author: { name: 'a' }, logo: 'https://x/y.png',
-    suggestedPrompts: ['a', '', 'b', 'c', 'd'], mcpServers: {} }, { slug: 'orig', ecosystems: ['claude'], pluginDir: tmp(), report });
-  assert.deepEqual(out, { name: 'orig', displayName: 'Orig', description: 'd', version: '1.0.0', suggestedPrompts: ['a', 'b', 'c'] });
-  assert.ok(report.warnings.some((w) => /dropped "author"/.test(w)));
+  const out = buildManifest({
+    $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+    name: 'Orig',
+    description: ' d ',
+    version: '1.0.0',
+    author: 'Jane Doe',
+    homepage: 'https://example.com/orig',
+    repository: 'https://github.com/acme/orig',
+    license: 'MIT',
+    themes: [{ name: 'Nord', type: 'dark', seeds: { background: '#2e3440', primary: '#88c0d0' } }],
+    logo: 'https://x/y.png',
+    keywords: ['x'],
+    suggestedPrompts: ['a', '', 'b', 'c', 'd'],
+    mcpServers: {},
+  }, { slug: 'orig', ecosystems: ['claude'], pluginDir: tmp(), report });
+  assert.deepEqual(out, {
+    $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+    name: 'orig',
+    displayName: 'Orig',
+    description: 'd',
+    version: '1.0.0',
+    author: { name: 'Jane Doe' },
+    homepage: 'https://example.com/orig',
+    repository: 'https://github.com/acme/orig',
+    license: 'MIT',
+    suggestedPrompts: ['a', 'b', 'c'],
+    themes: [{ name: 'Nord', type: 'dark', seeds: { background: '#2e3440', primary: '#88c0d0' } }],
+  });
+  assert.ok(report.warnings.some((w) => /dropped "keywords"/.test(w)));
   assert.ok(report.warnings.some((w) => /dropped logo/.test(w)));
 });
 

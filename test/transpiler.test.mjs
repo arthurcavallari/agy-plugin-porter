@@ -54,7 +54,11 @@ test('claude fixture output: MCP uses ${PLUGIN_ROOT}, agent is agy-shaped', { sk
   assert.doesNotMatch(mcp, /CLAUDE_PLUGIN_ROOT|AppData|tmp/);
   assert.match(readFileSync(join(outDir, 'agents/fixture-reviewer.md'), 'utf8'), /tools:\n {2}- find_by_name[\s\S]*model: pro/);
   assert.deepEqual(JSON.parse(readFileSync(join(outDir, 'plugin.json'), 'utf8')), {
-    name: 'fixture-claude', description: 'Claude Code fixture exercising every porter translation path.', version: '0.1.0',
+    name: 'fixture-claude',
+    description: 'Claude Code fixture exercising every porter translation path.',
+    version: '0.1.0',
+    author: { name: 'Fixture Author', email: 'fixture@example.com' },
+    homepage: 'https://example.com/fixture-claude',
   });
 });
 
