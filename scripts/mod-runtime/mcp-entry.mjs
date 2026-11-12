@@ -11,10 +11,12 @@ const write = (msg) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const OPEN_SCHEMA = { type: 'object', properties: {} };
 
+const safeToolPart = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, '_');
+
 const scannedTools = () => [
   ...(MOD.tools ?? []).map((t) => ({ name: t.name, description: t.description ?? '', inputSchema: OPEN_SCHEMA })),
   ...(MOD.commands ?? []).map((c) => ({
-    name: `slash_${c.name}`,
+    name: `slash_${safeToolPart(c.name)}`,
     description: `Runs the /${c.name} command: ${c.description ?? ''}`.trim(),
     inputSchema: { type: 'object', properties: { args: { type: 'string' } } },
   })),
@@ -34,7 +36,7 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
   const { id, method, params = {} } = msg ?? {};
   switch (method) {
     case 'initialize':
-      return write({ id, result: { protocolVersion: params.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: MOD.mcpServer, version: MOD.version ?? '0.0.0' } } });
+      return write({ id, result: { protocolVersion: params.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: MOD.pluginName ?? MOD.mcpServer, version: MOD.version ?? '0.0.0' } } });
     case 'ping':
       return write({ id, result: {} });
     case 'tools/list':

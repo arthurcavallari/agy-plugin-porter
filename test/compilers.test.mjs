@@ -593,3 +593,22 @@ test('PORTER-07: inferTier, sanitizeManifest, and detect handle .mcp.json, mcp.j
   assert.deepEqual(gemMcpOut.mcpServers.mem.args, ['${PLUGIN_ROOT}/mem.js']);
 });
 
+test('PRT-04: fixMcpServers deduplicates oversized <slug> MCP server prefixes and auditPlugin warns on >64-char prefixes', () => {
+  const rep = emptyReport();
+  const slug = 'google-developer-knowledge';
+  const fixed = fixMcpServers({
+    [slug]: { command: 'npx', args: ['-y', 'gdk-mcp'] },
+    [`${slug}-docs`]: { command: 'npx', args: ['-y', 'gdk-docs'] },
+  }, { slug, report: rep });
+  assert.deepEqual(Object.keys(fixed).sort(), ['docs', 'mcp']);
+  assert.equal(rep.warnings.length, 2);
+
+  const overDir = tmp();
+  write(overDir, 'plugin.json', JSON.stringify({ name: 'enterprise-knowledge-assistant-plugin', description: 'd' }));
+  write(overDir, 'mcp_config.json', JSON.stringify({
+    mcpServers: { 'enterprise-knowledge-search-backend': { command: 'node', args: ['s.mjs'] } },
+  }));
+  const audit = auditPlugin(overDir);
+  assert.ok(audit.warnings.some((w) => /64-char tool-name limit/.test(w)), JSON.stringify(audit.warnings));
+});
+

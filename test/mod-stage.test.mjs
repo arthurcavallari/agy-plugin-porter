@@ -71,7 +71,7 @@ test('replay-theater: Pre/Post resume by stepIdx, turn toast, atoms redraw, drop
 }));
 
 test('side-pane: own tools, prompt.context once per turn, prompt.fill copies, ui.close', { skip: !hasEsbuild && 'esbuild not installed' }, () => stage('side-pane', async (s, report) => {
-  assert.ok(report.ported.includes('mcp:side-pane'));
+  assert.ok(report.ported.includes('mcp:ui'));
   const v = await openView(s, 'c1');
   await s.call('/api/view', { conv: 'c1', cwd: 'C:/work' });
   const list = (await s.call('/api/mcp', { op: 'list' })).tools;

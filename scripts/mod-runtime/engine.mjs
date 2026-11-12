@@ -97,8 +97,9 @@ export class Engine {
   async listTools() {
     const inst = await this.get('');
     const tools = [];
+    const ns = this.mod.pluginName ?? this.mod.mcpServer;
     for (const t of inst.tools.values()) {
-      const full = `mcp__${this.mod.mcpServer}__${t.name}`;
+      const full = `mcp__${ns}__${t.name}`;
       const d = await inst.dispatch('tool.describe', { tool: full, description: t.description ?? '', inputSchema: t.inputSchema },
         (x) => ({ description: x.description, inputSchema: x.inputSchema }));
       tools.push({ name: t.name, description: d?.description ?? t.description ?? '', inputSchema: d?.inputSchema ?? t.inputSchema ?? { type: 'object', properties: {} } });
@@ -109,8 +110,12 @@ export class Engine {
 
   async callTool(conv, name, args) {
     const inst = await this.get(conv ?? '');
-    if (name.startsWith('slash_')) return this.runCommand(inst, name.slice(6), args?.args ?? '', 'mcp');
-    const full = `mcp__${this.mod.mcpServer}__${name}`;
+    if (name.startsWith('slash_')) {
+      const target = name.slice(6);
+      const matched = [...inst.commands.keys()].find((k) => safeToolPart(k) === target) ?? target;
+      return this.runCommand(inst, matched, args?.args ?? '', 'mcp');
+    }
+    const full = `mcp__${this.mod.pluginName ?? this.mod.mcpServer}__${name}`;
     const r = await inst.dispatch('tool.call', { tool: full, ...args }, () => ({ deny: `${name} has no handler in this mod` }));
     if (r?.deny) return { isError: true, text: String(r.deny) };
     return { isError: false, text: typeof r?.result === 'string' ? r.result : JSON.stringify(r?.result ?? null) };
@@ -122,8 +127,10 @@ export class Engine {
   }
 }
 
+const safeToolPart = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, '_');
+
 export const commandTool = (c) => ({
-  name: `slash_${c.name}`,
+  name: `slash_${safeToolPart(c.name)}`,
   description: `Runs the /${c.name} command: ${c.description ?? ''}`.trim(),
   inputSchema: { type: 'object', properties: { args: { type: 'string', description: `What follows /${c.name}${c.argumentHint ? ` (${c.argumentHint})` : ''}; empty for none.` } } },
 });

@@ -93,7 +93,7 @@ test('hybrid hooks file: classic hooks keep their shim, the mod gets its own gro
   assert.deepEqual(Object.keys(all['hybrid-mod-pane']), ['SessionStart', 'Stop']);
 });
 
-test('commands and tools: an MCP server named after the source, one skill per command', () => {
+test('commands and tools: a short "ui" MCP server key within 64-char limit, one skill per command', () => {
   const src = tempDir('porter-cmd-src-');
   cpSync(fixture('claude-mod-transcript'), src, { recursive: true });
   writeFileSync(join(src, 'hooks/register.js'), [
@@ -105,15 +105,15 @@ test('commands and tools: an MCP server named after the source, one skill per co
     '}',
   ].join('\n'));
   const { pluginDir, report } = compileSource(src, { slug: 'notes-port' });
-  assert.ok(report.ported.includes('mcp:fixture-claude-mod-transcript') && report.ported.includes('command:/notes'), report.ported.join(', '));
-  assert.deepEqual(json(pluginDir, 'mcp_config.json').mcpServers['fixture-claude-mod-transcript'], {
+  assert.ok(report.ported.includes('mcp:ui') && report.ported.includes('command:/notes'), report.ported.join(', '));
+  assert.deepEqual(json(pluginDir, 'mcp_config.json').mcpServers.ui, {
     command: 'agy-node', args: ['${PLUGIN_ROOT}/sidecars/pane/mcp-entry.mjs'],
   });
   const skill = readFileSync(join(pluginDir, 'skills/notes/SKILL.md'), 'utf8');
   assert.match(skill, /^name: notes$/m);
   assert.match(skill, /slash_notes/);
   assert.match(skill, /sidecar:\/\/notes-port\/pane\/ui\.html/);
-  // The mod's own mcp__ tool never becomes an agy tool hook.
+  // The mod's own mcp__ tool never becomes an agy tool hook (even when named after sourceName).
   assert.equal(json(pluginDir, 'hooks.json')['notes-port-mod-pane'].PreToolUse, undefined);
   assert.deepEqual(json(pluginDir, 'sidecars/pane/mod.json').tools, [{ name: 'add', description: 'Add a note.' }]);
 });
