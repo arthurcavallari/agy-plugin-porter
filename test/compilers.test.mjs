@@ -612,3 +612,27 @@ test('PRT-04: fixMcpServers deduplicates oversized <slug> MCP server prefixes an
   assert.ok(audit.warnings.some((w) => /64-char tool-name limit/.test(w)), JSON.stringify(audit.warnings));
 });
 
+test('PRT-06: fixMcpServers bridges legacy SSE endpoints via stdio mcp-remote while keeping Streamable HTTP on serverUrl', () => {
+  const rep = emptyReport();
+  const fixed = fixMcpServers({
+    sseExplicit: { type: 'sse', url: 'https://mcp.example.com/events', headers: { Authorization: 'Bearer tok' } },
+    ssePath: { url: 'https://mcp.example.com/sse' },
+    gemSse: { url: 'https://gem.example.com/stream' },
+    streamHttp: { type: 'http', url: 'https://mcp.example.com/mcp' },
+  }, { ecosystems: ['gemini'], report: rep });
+  assert.deepEqual(fixed.sseExplicit, {
+    command: 'npx',
+    args: ['-y', 'mcp-remote', 'https://mcp.example.com/events', '--header', 'Authorization: Bearer tok'],
+  });
+  assert.deepEqual(fixed.ssePath, {
+    command: 'npx',
+    args: ['-y', 'mcp-remote', 'https://mcp.example.com/sse'],
+  });
+  assert.deepEqual(fixed.gemSse, {
+    command: 'npx',
+    args: ['-y', 'mcp-remote', 'https://gem.example.com/stream'],
+  });
+  assert.deepEqual(fixed.streamHttp, { serverUrl: 'https://mcp.example.com/mcp' });
+  assert.equal(rep.warnings.filter((w) => /mcp-remote/.test(w)).length, 3);
+});
+
