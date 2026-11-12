@@ -636,3 +636,28 @@ test('PRT-06: fixMcpServers bridges legacy SSE endpoints via stdio mcp-remote wh
   assert.equal(rep.warnings.filter((w) => /mcp-remote/.test(w)).length, 3);
 });
 
+test('PRT-07: fixMcpServers strips passthrough ${VAR} / ${env:VAR} env clobbers, resolves ${VAR:-default}, and declares McpVariable entries', () => {
+  const rep = emptyReport();
+  const fixed = fixMcpServers({
+    gh: {
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-github'],
+      env: {
+        GITHUB_TOKEN: '${GITHUB_TOKEN}',
+        CURSOR_KEY: '${env:CURSOR_KEY}',
+        API_BASE: '${API_BASE:-https://api.github.com}',
+        AUTH_HEADER: 'Bearer ${SECRET_TOKEN}',
+      },
+    },
+  }, { report: rep });
+  assert.deepEqual(fixed.gh.env, {
+    API_BASE: 'https://api.github.com',
+    AUTH_HEADER: 'Bearer ${SECRET_TOKEN}',
+  });
+  assert.deepEqual(fixed.gh.variables, [
+    { name: 'SECRET_TOKEN', title: 'SECRET_TOKEN', description: 'Value for SECRET_TOKEN', secret: true },
+  ]);
+  assert.ok(rep.warnings.some((w) => /removed self-referencing env "GITHUB_TOKEN/.test(w)));
+  assert.ok(rep.warnings.some((w) => /removed self-referencing env "CURSOR_KEY/.test(w)));
+});
+
