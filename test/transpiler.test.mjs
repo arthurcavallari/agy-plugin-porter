@@ -240,3 +240,38 @@ test('CLI: --json report, usage errors', () => {
   assert.equal(missing.status, 1);
   assert.match(missing.stderr, /neither an existing path nor owner\/repo/);
 });
+
+test('PRT-14: multi-plugin .claude-plugin/marketplace.json lists --path choices or ports --plugin selection, and agy validate accepts max_turns/execution_policy/subagents', { skip: !hasAgy && 'agy not on PATH' }, async () => {
+  const mp = tempDir('porter-mp-');
+  mkdirSync(join(mp, '.claude-plugin'), { recursive: true });
+  cpSync(fixture('claude'), join(mp, 'plugins/alpha'), { recursive: true });
+  cpSync(fixture('claude'), join(mp, 'plugins/beta'), { recursive: true });
+  writeFileSync(join(mp, 'plugins/alpha/agents/fixture-reviewer.md'), [
+    '---',
+    'name: fixture-reviewer',
+    'description: Reviewer with 2.31 fields',
+    'tools: Read, Grep',
+    'model: sonnet',
+    'maxTurns: 15',
+    'permissionMode: acceptEdits',
+    'agents: [helper]',
+    '---',
+    '',
+    'Review.',
+  ].join('\n'));
+  writeFileSync(join(mp, '.claude-plugin/marketplace.json'), JSON.stringify({
+    name: 'acme-mp',
+    plugins: [
+      { name: 'alpha', source: './plugins/alpha' },
+      { name: 'beta', source: './plugins/beta' },
+    ],
+  }));
+  await assert.rejects(
+    () => portPackage({ source: mp, outDir: out() }),
+    /marketplace repository "acme-mp" contains 2 plugins; pass --path \(or --plugin\) to select one: alpha \(--path plugins\/alpha\), beta \(--path plugins\/beta\)/,
+  );
+  const outAlpha = out();
+  const { report } = await portPackage({ source: mp, plugin: 'alpha', outDir: outAlpha, validate: true });
+  assert.equal(report.validation.ok, true, JSON.stringify(report.validation));
+  assert.deepEqual(report.validation.errors, []);
+});

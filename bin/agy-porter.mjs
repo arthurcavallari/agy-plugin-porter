@@ -20,6 +20,7 @@ Options:
                     github.com link to the repo or to a folder in it
   --path <dir>      subfolder of the source that holds the plugin (a folder
                     link sets it for you)
+  --plugin <name>   plugin name from .claude-plugin/marketplace.json (monorepos)
   --slug <name>     plugin name in Antigravity (default: the source's name)
   --out <dir>       where to write the ported plugin (required unless --install)
   --force           replace a non-empty --out
@@ -54,7 +55,7 @@ async function main() {
   try {
     ({ values: opts } = parseArgs({
       options: {
-        source: { type: 'string' }, path: { type: 'string' }, slug: { type: 'string' }, out: { type: 'string' },
+        source: { type: 'string' }, path: { type: 'string' }, plugin: { type: 'string' }, slug: { type: 'string' }, out: { type: 'string' },
         force: { type: 'boolean' }, validate: { type: 'boolean' }, install: { type: 'boolean' },
         agy: { type: 'string' }, json: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
       },
@@ -69,7 +70,7 @@ async function main() {
   const outDir = opts.out ?? mkdtempSync(join(tmpdir(), 'agy-porter-out-'));
   try {
     const { report } = await portPackage({
-      source: opts.source, path: opts.path, outDir, slug: opts.slug, agy: opts.agy, force: opts.force, validate: opts.validate,
+      source: opts.source, path: opts.path, plugin: opts.plugin, outDir, slug: opts.slug, agy: opts.agy, force: opts.force, validate: opts.validate,
     });
     if (opts.json) console.log(JSON.stringify({ outDir: opts.out ?? null, ...report }, null, 2));
     else {

@@ -700,3 +700,34 @@ test('PRT-09: unrestricted Claude agents receive explicit tools + inheritMcp, an
   assert.equal(rep.warnings.filter((w) => /built-in agy agent name/.test(w)).length, 2);
 });
 
+test('PRT-14: compileModes maps maxTurns, permissionMode, agents, and 2.31+ model tiers', () => {
+  const dir = tmp();
+  write(dir, 'agents/coord.md', [
+    '---',
+    'name: coord',
+    'description: Coordinates work',
+    'tools: Read, Bash',
+    'model: MODEL_PLACEHOLDER_M427',
+    'maxTurns: 25',
+    'permissionMode: acceptEdits',
+    'agents:',
+    '  - verifier',
+    '  - researcher',
+    '---',
+    '',
+    'Coordinate.',
+  ].join('\n'));
+  const rep = compileModes(dir, { srcDir: dir, ecosystems: ['claude'], slug: 'team' });
+  assert.deepEqual(rep.warnings, []);
+  assert.deepEqual(fm(dir, 'agents/coord.md').data, {
+    name: 'coord',
+    description: 'Coordinates work',
+    tools: ['manage_task', 'read_file', 'run_command', 'view_file'],
+    model: 'pro',
+    max_turns: 25,
+    execution_policy: 'turbo',
+    subagents: ['verifier', 'researcher'],
+    subagent: true,
+  });
+});
+
