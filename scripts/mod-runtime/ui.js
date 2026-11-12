@@ -22,8 +22,27 @@
     const parentOrigin = location.ancestorOrigins?.[0];
     if (e.source !== window.parent || !e.origin || e.origin === 'null' || (parentOrigin && parentOrigin !== 'null' && e.origin !== parentOrigin)) return;
     if (e.data?.type === 'theme-change') {
-      const t = e.data.payload?.themeType ?? e.data.payload?.theme;
-      if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+      const p = e.data.payload ?? {};
+      const t = p.themeType ?? p.theme;
+      if (typeof t === 'string' && /dark|light/i.test(t)) {
+        const mode = /light/i.test(t) ? 'light' : 'dark';
+        document.documentElement.dataset.theme = mode;
+        document.documentElement.setAttribute?.('data-newux-theme', mode);
+      }
+      const vars = p.cssVariables;
+      if (vars && typeof vars === 'object' && document.documentElement.style?.setProperty) {
+        for (const [k, v] of Object.entries(vars)) {
+          if (k.startsWith('--') && typeof v === 'string' && !/[;{}]/.test(v)) {
+            document.documentElement.style.setProperty(k, v);
+          }
+        }
+      }
+      if (!vars?.['--app-font-scale'] && document.documentElement.style?.setProperty) {
+        const px = Number.parseFloat(p.fontSize ?? vars?.['--vscode-font-size'] ?? '');
+        if (Number.isFinite(px) && px > 0) {
+          document.documentElement.style.setProperty('--app-font-scale', (px / 14).toFixed(4));
+        }
+      }
     } else if (e.data?.type === 'sidecar-visibility' && typeof e.data.payload?.visible === 'boolean') {
       hostVisible = e.data.payload.visible;
       report();

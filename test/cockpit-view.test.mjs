@@ -105,10 +105,15 @@ test('a preview shows the report as kit badges and sections; Install asks first,
   assert.ok($('recent').querySelector('.cockpit-row'), 'the preview is listed under Recent previews');
 });
 
-test('the pane fills its width, as Hangar and Context Monitor do', () => {
+test('the pane fills its width, as Hangar and Context Monitor do, and uses 2.31+ body type + 2.30+ 12px/8px inset geometry (PRT-10)', () => {
   // A max-width left an empty band on the right of a wide editor tab (seen live)
-  const cockpitRule = readFileSync(`${COCKPIT}ui.css`, 'utf8').match(/\.cockpit\s*\{([^}]*)\}/)[1];
+  const css = readFileSync(`${COCKPIT}ui.css`, 'utf8');
+  const cockpitRule = css.match(/\.cockpit\s*\{([^}]*)\}/)[1];
   assert.doesNotMatch(cockpitRule, /max-width/);
+  assert.match(cockpitRule, /padding:\s*12px/);
+  assert.match(cockpitRule, /gap:\s*8px/);
+  assert.match(css, /body\s*\{[\s\S]*?font-size:\s*var\(--text-base,\s*0\.875rem\)/);
+  assert.match(css, /\.cockpit-head h1\s*\{[\s\S]*?font-size:\s*var\(--text-lg,\s*1rem\)/);
 });
 
 test("hidden cards stay hidden: ui.css overrides the kit cards' display:flex for [hidden]", () => {

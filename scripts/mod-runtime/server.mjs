@@ -68,6 +68,18 @@ function preloadJs() {
 }
 
 const STATIC = { '/ui.html': 'text/html', '/ui.js': 'application/javascript', '/ui-draw.js': 'application/javascript' };
+let cachedHostCss = null;
+
+async function hostCss() {
+  if (cachedHostCss !== null) return cachedHostCss;
+  const ls = process.env.ANTIGRAVITY_LS_ADDRESS?.trim();
+  if (!ls) return '';
+  try {
+    const res = await fetch(`http://${ls}/compiled_tailwind.css`, { signal: AbortSignal.timeout(1500) });
+    if (res.ok) { cachedHostCss = await res.text(); return cachedHostCss; }
+  } catch {}
+  return '';
+}
 
 // A view's conversation: a real id, or '' for a new-conversation view (no data shown).
 const convOf = (v) => (typeof v === 'string' && v && v !== '_new' ? v : '');
@@ -151,6 +163,9 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${LOOPBACK}`);
   if (req.method === 'GET' && url.pathname === '/preload.js') {
     return send(res, 200, preloadJs(), 'application/javascript; charset=utf-8');
+  }
+  if (req.method === 'GET' && url.pathname === '/compiled_tailwind.css') {
+    return send(res, 200, await hostCss(), 'text/css; charset=utf-8');
   }
   if (req.method === 'GET' && Object.hasOwn(STATIC, url.pathname)) {
     return send(res, 200, readFileSync(join(import.meta.dirname, url.pathname.slice(1)), 'utf8'), `${STATIC[url.pathname]}; charset=utf-8`);

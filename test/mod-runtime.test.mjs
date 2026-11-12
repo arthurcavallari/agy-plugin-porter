@@ -205,3 +205,55 @@ test('ui.js reports the view hidden while Hangar says its frame is hidden', asyn
   fromParent(true);
   assert.deepEqual(seen(), [false, true, false, true]);
 });
+
+test('PRT-10: ui.js applies host theme-change cssVariables and computes --app-font-scale from fontSize', () => {
+  const listeners = {};
+  const styleProps = new Map();
+  const attrs = new Map();
+  const el = () => ({ replaceChildren() {}, appendChild() {}, querySelector() {}, set textContent(_) {} });
+  const parent = {};
+  const window = {
+    parent,
+    PorterDraw: { draw() {} },
+    addEventListener: (type, fn) => { listeners[type] = fn; },
+  };
+  Object.assign(window, {
+    window,
+    URLSearchParams,
+    URL,
+    setTimeout,
+    location: { search: '?token=t&conversationId=_new', ancestorOrigins: ['http://127.0.0.1:9'] },
+    document: {
+      visibilityState: 'visible',
+      documentElement: {
+        dataset: {},
+        setAttribute: (k, v) => attrs.set(k, v),
+        style: { setProperty: (k, v) => styleProps.set(k, v) },
+      },
+      createElement: () => el(),
+      getElementById: el,
+      addEventListener() {},
+    },
+    fetch: async () => ({ json: async () => ({}) }),
+    IntersectionObserver: class { observe() {} },
+    EventSource: class {},
+  });
+  vm.runInNewContext(readFileSync(new URL('../scripts/mod-runtime/ui.js', import.meta.url), 'utf8'), window);
+  listeners.message({
+    source: parent,
+    origin: 'http://127.0.0.1:9',
+    data: {
+      type: 'theme-change',
+      payload: {
+        themeType: 'dark',
+        fontSize: 16,
+        cssVariables: { '--background': '#070708', '--primary': '#2F71E3' },
+      },
+    },
+  });
+  assert.equal(window.document.documentElement.dataset.theme, 'dark');
+  assert.equal(attrs.get('data-newux-theme'), 'dark');
+  assert.equal(styleProps.get('--background'), '#070708');
+  assert.equal(styleProps.get('--primary'), '#2F71E3');
+  assert.equal(styleProps.get('--app-font-scale'), '1.1429');
+});

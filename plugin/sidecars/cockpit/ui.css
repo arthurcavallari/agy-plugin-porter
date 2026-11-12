@@ -1,11 +1,11 @@
 /* Layout only. Colors, type and components come from the host stylesheet, sidecar-kit's shell tokens and
-   its agy-* components (agy-ui.css). Spacing follows Antigravity's own pages: 12px card padding, 16px gaps. */
+   its agy-* components (agy-ui.css). Spacing follows Antigravity 2.30+ inset panes: 12px padding, 8px stack gap. */
 body {
   margin: 0;
   background: var(--agy-canvas);
   color: var(--agy-ink);
   font-family: var(--agy-font-sans);
-  font-size: var(--text-sm, 0.875rem);
+  font-size: var(--text-base, 0.875rem);
 }
 
 /* The kit's cards are display:flex, which beats the hidden attribute's UA rule (seen live: a hidden report
@@ -16,19 +16,19 @@ body {
 .cockpit {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 8px;
+  padding: 12px;
 }
 
 .cockpit-head h1 {
   margin: 0;
-  font-size: var(--text-lg, 1.125rem);
+  font-size: var(--text-lg, 1rem);
   font-weight: var(--font-weight-medium, 500);
 }
 
 .cockpit-head p {
   margin: 4px 0 0;
-  font-size: var(--text-xs, 0.75rem);
+  font-size: var(--text-sm, 0.75rem);
   color: var(--agy-ink-faint);
 }
 
@@ -76,7 +76,7 @@ body {
 .cockpit-list {
   margin: 0;
   padding: 0 0 0 18px;
-  font-size: var(--text-xs, 0.75rem);
+  font-size: var(--text-sm, 0.75rem);
   line-height: 1.5;
 }
 
@@ -86,7 +86,7 @@ body {
 
 .cockpit-none {
   margin: 0;
-  font-size: var(--text-xs, 0.75rem);
+  font-size: var(--text-xs, 0.6875rem);
   color: var(--agy-ink-faint);
 }
 
