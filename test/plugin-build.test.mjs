@@ -83,3 +83,20 @@ test('dist/plugin/agy-plugin-porter stays synchronized with lib/ and scripts/ wh
     }
   }
 });
+
+test('PRT-12: package.json, package-lock.json, and bundled kit stay aligned without file: protocol leaks', () => {
+  const pkgRaw = readFileSync(join(ROOT, 'package.json'), 'utf8');
+  const lockRaw = readFileSync(join(ROOT, 'package-lock.json'), 'utf8');
+  assert.doesNotMatch(pkgRaw, /"file:/);
+  assert.doesNotMatch(lockRaw, /"file:/);
+  const lock = JSON.parse(lockRaw);
+  assert.equal(lock.lockfileVersion, 3);
+  assert.equal(lock.version, pkg.version);
+  assert.equal(lock.packages[''].version, pkg.version);
+  assert.equal(lock.packages[''].devDependencies['antigravity-sidecar-kit'], pkg.devDependencies['antigravity-sidecar-kit']);
+  const lockedKit = lock.packages['node_modules/antigravity-sidecar-kit']?.version;
+  const { dir } = buildPlugin({ outRoot: tempDir('porter-build-'), tar: false });
+  const bundledKit = json(join(dir, 'node_modules', 'antigravity-sidecar-kit'), 'package.json').version;
+  assert.equal(bundledKit, lockedKit);
+  assert.match(bundledKit, /^(1\.[89]\.|1\.[1-9]\d\.|[2-9]\.)/);
+});
