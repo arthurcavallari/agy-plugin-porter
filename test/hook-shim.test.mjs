@@ -393,6 +393,26 @@ test('PRT-03: buildHookVars and expandCommand support PLUGIN_ROOT, PLUGIN_DATA, 
   assert.match(nestedVars.PLUGIN_DATA, /plugin_data[\\/]my-plugin$/);
   const atVerVars = buildHookVars('claude', { pluginRoot: 'C:/Users/u/.gemini/config/plugins/my-plugin@1.4.0', projectDir: 'C:/ws', env: {} });
   assert.match(atVerVars.PLUGIN_DATA, /plugin_data[\\/]my-plugin$/);
+
+  // Cross-platform backslashes, trailing slashes, and unsafe plugin.json traversal names
+  const winBackslashVars = buildHookVars('claude', { pluginRoot: 'C:\\Users\\u\\.gemini\\config\\plugins\\my-plugin\\1.4.0\\', projectDir: 'C:/ws', env: {} });
+  assert.match(winBackslashVars.PLUGIN_DATA, /plugin_data[\\/]my-plugin$/);
+  const trailingAtVars = buildHookVars('claude', { pluginRoot: '/home/u/.gemini/config/plugins/my-plugin@v2.0.0-beta.1///', projectDir: '/ws', env: {} });
+  assert.match(trailingAtVars.PLUGIN_DATA, /plugin_data[\\/]my-plugin$/);
+  const rootOnlyVars = buildHookVars('claude', { pluginRoot: '/', projectDir: '/ws', env: {} });
+  assert.match(rootOnlyVars.PLUGIN_DATA, /plugin_data[\\/]default$/);
+
+  const traversalDir = tempDir('porter-slug-traversal-');
+  const validDiskDir = join(tempDir('porter-slug-disk-'), '1.4.0');
+  writeFileSync(join(traversalDir, 'plugin.json'), JSON.stringify({ name: '../../escaped-outside' }));
+  const travVars = buildHookVars('claude', { pluginRoot: traversalDir, projectDir: 'C:/ws', env: {} });
+  assert.doesNotMatch(travVars.PLUGIN_DATA, /escaped-outside/);
+  assert.match(travVars.PLUGIN_DATA, /plugin_data[\\/]porter-slug-traversal-/);
+
+  mkdirSync(join(validDiskDir, '.antigravity-plugin'), { recursive: true });
+  writeFileSync(join(validDiskDir, '.antigravity-plugin', 'plugin.json'), JSON.stringify({ name: 'manifest-slug' }));
+  const diskVars = buildHookVars('claude', { pluginRoot: validDiskDir, projectDir: 'C:/ws', env: {} });
+  assert.match(diskVars.PLUGIN_DATA, /plugin_data[\\/]manifest-slug$/);
 });
 
 test('PRT-05: shouldRun and toSourcePayload strip plugin <slug>_ prefix on both eager and call_mcp_tool MCP calls', () => {
