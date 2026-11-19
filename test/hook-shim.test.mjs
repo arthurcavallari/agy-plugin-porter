@@ -387,6 +387,12 @@ test('PRT-03: buildHookVars and expandCommand support PLUGIN_ROOT, PLUGIN_DATA, 
   const geminiVars = buildHookVars('gemini', { pluginRoot: 'C:/plug/gem', projectDir: 'C:/ws', env: {} });
   assert.equal(geminiVars.GEMINI_PLUGIN_PATH, 'C:/plug/gem');
   assert.match(geminiVars.PLUGIN_DATA, /plugin_data[\\/]gem$/);
+
+  // Versioned plugin dirs (<slug>/<ver> and <slug>@<ver>) resolve logical plugin slug when PLUGIN_DATA is unset
+  const nestedVars = buildHookVars('claude', { pluginRoot: 'C:/Users/u/.gemini/config/plugins/my-plugin/1.4.0', projectDir: 'C:/ws', env: {} });
+  assert.match(nestedVars.PLUGIN_DATA, /plugin_data[\\/]my-plugin$/);
+  const atVerVars = buildHookVars('claude', { pluginRoot: 'C:/Users/u/.gemini/config/plugins/my-plugin@1.4.0', projectDir: 'C:/ws', env: {} });
+  assert.match(atVerVars.PLUGIN_DATA, /plugin_data[\\/]my-plugin$/);
 });
 
 test('PRT-05: shouldRun and toSourcePayload strip plugin <slug>_ prefix on both eager and call_mcp_tool MCP calls', () => {

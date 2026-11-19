@@ -13,7 +13,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, isAbsolute, join, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // agy tool name -> source tool name and arg renames. Arg names are the agy CLI's
@@ -148,10 +148,24 @@ export function expandCommand(command, vars, { posix = false } = {}) {
   });
 }
 
+function resolvePluginSlug(pluginRoot) {
+  for (const rel of [['.antigravity-plugin', 'plugin.json'], ['plugin.json']]) {
+    try {
+      const parsed = JSON.parse(readFileSync(join(pluginRoot, ...rel), 'utf8'));
+      if (typeof parsed?.name === 'string' && parsed.name.trim()) return parsed.name.trim();
+    } catch {}
+  }
+  const leaf = basename(pluginRoot);
+  if (/^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(leaf)) {
+    return basename(dirname(pluginRoot)).replace(/@v?\d+\.\d+\.\d+.*$/, '');
+  }
+  return leaf.replace(/@v?\d+\.\d+\.\d+.*$/, '');
+}
+
 export function buildHookVars(dialect, { pluginRoot, projectDir, env = process.env }) {
   const root = env.PLUGIN_ROOT?.trim() || pluginRoot;
   const home = env.HOME?.trim() || env.USERPROFILE?.trim() || homedir();
-  const data = env.PLUGIN_DATA?.trim() || join(home, '.gemini', 'antigravity', 'plugin_data', basename(pluginRoot));
+  const data = env.PLUGIN_DATA?.trim() || join(home, '.gemini', 'antigravity', 'plugin_data', resolvePluginSlug(root));
   return dialect === 'gemini'
     ? { PLUGIN_ROOT: root, PLUGIN_DATA: data, extensionPath: root, GEMINI_PLUGIN_PATH: root, GEMINI_PROJECT_DIR: projectDir, CLAUDE_PROJECT_DIR: projectDir }
     : { PLUGIN_ROOT: root, PLUGIN_DATA: data, CLAUDE_PLUGIN_ROOT: root, CLAUDE_PLUGIN_DATA: data, CLAUDE_PROJECT_DIR: projectDir };

@@ -267,6 +267,12 @@ test('agents: Claude tools and models', () => {
   assert.deepEqual(mapClaudeTools(['Glob']).tools, ['find_by_name']);
   assert.deepEqual(mapClaudeModel('sonnet'), { tier: 'pro' });
   assert.deepEqual(mapClaudeModel('claude-haiku-4-5'), { tier: 'flash' });
+  assert.deepEqual(mapClaudeModel('gemini-4-neon-xhigh'), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M532'), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('gemini-pro-orchestrator-neon'), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('gemini-4-argon-high'), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('gemini-4-hydrogen-medium'), { tier: 'flash' });
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M526'), { tier: 'flash' });
   assert.deepEqual(mapClaudeModel('inherit'), { tier: 'inherit' });
   assert.deepEqual(mapClaudeModel('gpt-5'), { tier: undefined, dropped: true });
 });
