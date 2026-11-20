@@ -148,10 +148,32 @@ export function expandCommand(command, vars, { posix = false } = {}) {
   });
 }
 
+const SAFE_PLUGIN_SLUG = /^[a-z0-9][a-z0-9._-]*$/i;
+
+export function resolvePluginSlug(pluginRoot) {
+  const rawRoot = String(pluginRoot || '').trim();
+  if (rawRoot) {
+    for (const rel of [['.antigravity-plugin', 'plugin.json'], ['plugin.json']]) {
+      try {
+        const parsed = JSON.parse(readFileSync(join(rawRoot, ...rel), 'utf8'));
+        const candidate = typeof parsed?.name === 'string' ? parsed.name.trim() : '';
+        if (SAFE_PLUGIN_SLUG.test(candidate)) return candidate;
+      } catch {}
+    }
+  }
+  const segments = rawRoot.replace(/\\/g, '/').replace(/\/+$/, '').split('/').filter(Boolean);
+  const leaf = segments[segments.length - 1] || '';
+  const parent = segments[segments.length - 2] || '';
+  const rawSlug = /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(leaf) && parent
+    ? parent.replace(/@v?\d+\.\d+\.\d+.*$/, '')
+    : leaf.replace(/@v?\d+\.\d+\.\d+.*$/, '');
+  return SAFE_PLUGIN_SLUG.test(rawSlug) ? rawSlug : 'default';
+}
+
 export function buildHookVars(dialect, { pluginRoot, projectDir, env = process.env }) {
   const root = env.PLUGIN_ROOT?.trim() || pluginRoot;
   const home = env.HOME?.trim() || env.USERPROFILE?.trim() || homedir();
-  const data = env.PLUGIN_DATA?.trim() || join(home, '.gemini', 'antigravity', 'plugin_data', basename(pluginRoot));
+  const data = env.PLUGIN_DATA?.trim() || join(home, '.gemini', 'antigravity', 'plugin_data', resolvePluginSlug(root));
   return dialect === 'gemini'
     ? { PLUGIN_ROOT: root, PLUGIN_DATA: data, extensionPath: root, GEMINI_PLUGIN_PATH: root, GEMINI_PROJECT_DIR: projectDir, CLAUDE_PROJECT_DIR: projectDir }
     : { PLUGIN_ROOT: root, PLUGIN_DATA: data, CLAUDE_PLUGIN_ROOT: root, CLAUDE_PLUGIN_DATA: data, CLAUDE_PROJECT_DIR: projectDir };

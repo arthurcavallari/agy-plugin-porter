@@ -267,6 +267,12 @@ test('agents: Claude tools and models', () => {
   assert.deepEqual(mapClaudeTools(['Glob']).tools, ['find_by_name']);
   assert.deepEqual(mapClaudeModel('sonnet'), { tier: 'pro' });
   assert.deepEqual(mapClaudeModel('claude-haiku-4-5'), { tier: 'flash' });
+  assert.deepEqual(mapClaudeModel('gemini-4-neon-xhigh'), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M532'), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('gemini-pro-orchestrator-neon'), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('gemini-4-argon-high'), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('gemini-4-hydrogen-medium'), { tier: 'flash' });
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M526'), { tier: 'flash' });
   assert.deepEqual(mapClaudeModel('inherit'), { tier: 'inherit' });
   assert.deepEqual(mapClaudeModel('gpt-5'), { tier: undefined, dropped: true });
 });
@@ -730,4 +736,89 @@ test('PRT-14: compileModes maps maxTurns, permissionMode, agents, and 2.31+ mode
     subagent: true,
   });
 });
+
+test('mapClaudeModel dynamically resolves unhardcoded future models structurally and via model-catalog-cache.json', () => {
+  // 1. Structural zero-codename fallback (no catalog needed)
+  assert.deepEqual(mapClaudeModel('gemini-5-xenon-xhigh', { catalogPath: null }), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('claude-titan-6-0-max', { catalogPath: null }), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('claude-haiku-6-0', { catalogPath: null }), { tier: 'flash' });
+  assert.deepEqual(mapClaudeModel('gemini-4.5-flash-lite', { catalogPath: null }), { tier: 'flash_lite' });
+  assert.deepEqual(mapClaudeModel('gpt-5', { catalogPath: null }), { tier: undefined, dropped: true });
+  assert.deepEqual(mapClaudeModel('gpt-4o-mini', { catalogPath: null }), { tier: undefined, dropped: true });
+
+  // 2. Catalog-assisted resolution via persisted model-catalog-cache.json (resolves chemical-element flash/flash_lite + new M* enums)
+  const dir = tmp();
+  const catalogPath = join(dir, 'model-catalog-cache.json');
+  writeFileSync(
+    catalogPath,
+    JSON.stringify({
+      schemaVersion: 1,
+      tieredModelIds: {
+        flashLite: ['gemini-5-pico'],
+        flash: ['gemini-5-helium-high'],
+      },
+      modelsBySlug: {
+        'gemini-5-pico': {
+          modelId: 'gemini-5-pico',
+          modelEnum: 'MODEL_PLACEHOLDER_M198',
+          modelProvider: 'MODEL_PROVIDER_GOOGLE',
+        },
+        'gemini-5-helium-high': {
+          modelId: 'gemini-5-helium-high',
+          modelEnum: 'MODEL_PLACEHOLDER_M920',
+          modelProvider: 'MODEL_PROVIDER_GOOGLE',
+        },
+        'gemini-5-xenon-xhigh': {
+          modelId: 'gemini-5-xenon-xhigh',
+          modelEnum: 'MODEL_PLACEHOLDER_M910',
+          modelProvider: 'MODEL_PROVIDER_GOOGLE',
+        },
+        'gpt-oss-120b-medium': {
+          modelId: 'gpt-oss-120b-medium',
+          modelEnum: 'MODEL_OPENAI_GPT_OSS_120B_MEDIUM',
+          modelProvider: 'MODEL_PROVIDER_OPENAI',
+        },
+      },
+    }),
+    'utf8'
+  );
+
+  assert.deepEqual(mapClaudeModel('gemini-5-pico', { catalogPath }), { tier: 'flash_lite' });
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M198', { catalogPath }), { tier: 'flash_lite' });
+  assert.deepEqual(mapClaudeModel('gemini-5-helium-high', { catalogPath }), { tier: 'flash' });
+  assert.deepEqual(mapClaudeModel('gemini-5-helium-low', { catalogPath }), { tier: 'flash' });
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M920', { catalogPath }), { tier: 'flash' });
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M910', { catalogPath }), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('MODEL_OPENAI_GPT_OSS_120B_MEDIUM', { catalogPath }), {
+    tier: undefined,
+    dropped: true,
+  });
+
+  // 3. Raw GetAvailableModelsResponse envelope ({ response: { models: map, tieredModelIds } })
+  const rawAvail = {
+    response: {
+      tieredModelIds: { flashLite: ['gemini-6-quark'], flash: ['gemini-6-photon-high'] },
+      models: {
+        'gemini-6-quark': { model: 'MODEL_PLACEHOLDER_M950', modelProvider: 'MODEL_PROVIDER_GOOGLE' },
+        'gemini-6-photon-high': { model: 'MODEL_PLACEHOLDER_M951', modelProvider: 'MODEL_PROVIDER_GOOGLE' },
+        'gemini-6-krypton-xhigh': { model: 'MODEL_PLACEHOLDER_M952', modelProvider: 'MODEL_PROVIDER_GOOGLE' },
+        'gemini-2.5-flash-lite': { model: 'MODEL_GOOGLE_GEMINI_2_5_FLASH_LITE', modelProvider: 'MODEL_PROVIDER_GOOGLE' },
+        'gemini-2.5-flash': { model: 'MODEL_GOOGLE_GEMINI_2_5_FLASH', modelProvider: 'MODEL_PROVIDER_GOOGLE' },
+        'gemini-flash-worker-agy': { model: 'MODEL_PLACEHOLDER_M669', modelProvider: 'MODEL_PROVIDER_GOOGLE' },
+        'tab_flash_lite_preview': { model: 'MODEL_PLACEHOLDER_M19', modelProvider: 'MODEL_PROVIDER_GOOGLE' },
+      },
+    },
+  };
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M950', { availableModels: rawAvail }), { tier: 'flash_lite' });
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M951', { availableModels: rawAvail }), { tier: 'flash' });
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M952', { availableModels: rawAvail }), { tier: 'pro' });
+  assert.deepEqual(mapClaudeModel('gemini-2.5-flash-lite', { availableModels: rawAvail }), { tier: 'flash_lite' });
+  assert.deepEqual(mapClaudeModel('gemini-2.5-flash', { availableModels: rawAvail }), { tier: 'flash' });
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M669', { availableModels: rawAvail }), { tier: 'flash' });
+  assert.deepEqual(mapClaudeModel('MODEL_PLACEHOLDER_M19', { availableModels: rawAvail }), {
+    tier: undefined,
+    dropped: true,
+  });
+});
+
 

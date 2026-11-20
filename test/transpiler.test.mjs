@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import { portPackage } from '../lib/index.mjs';
 import { loadEsbuild } from '../lib/mod-transform.mjs';
-import { transpile } from '../lib/transpiler-engine.mjs';
+import { stageWithAgy, transpile } from '../lib/transpiler-engine.mjs';
 import { tempDir } from './temp.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
@@ -274,4 +274,24 @@ test('PRT-14: multi-plugin .claude-plugin/marketplace.json lists --path choices 
   const { report } = await portPackage({ source: mp, plugin: 'alpha', outDir: outAlpha, validate: true });
   assert.equal(report.validation.ok, true, JSON.stringify(report.validation));
   assert.deepEqual(report.validation.errors, []);
+});
+
+test('stageWithAgy resolves both nested plugins/<slug>/<ver>/ and <slug>@<ver>/ staging layouts', () => {
+  const standInDir = tempDir('porter-fake-agy-');
+  const fakeAgy = join(standInDir, 'fake-agy.mjs');
+  writeFileSync(
+    fakeAgy,
+    [
+      "import { mkdirSync, writeFileSync } from 'node:fs';",
+      "import { join } from 'node:path';",
+      "const home = process.env.HOME || process.env.USERPROFILE;",
+      "const nested = join(home, '.gemini', 'config', 'plugins', 'acme-tool', '1.2.3', '.antigravity-plugin');",
+      "mkdirSync(nested, { recursive: true });",
+      "writeFileSync(join(nested, 'plugin.json'), JSON.stringify({ name: 'acme-tool', version: '1.2.3' }));",
+    ].join('\n'),
+  );
+  const workNested = tempDir('porter-work-nested-');
+  const stagedNested = stageWithAgy(standInDir, { agy: fakeAgy, workDir: workNested });
+  assert.ok(existsSync(join(stagedNested, '.antigravity-plugin', 'plugin.json')));
+  assert.match(stagedNested, /acme-tool[\\/]1\.2\.3$/);
 });
