@@ -3,7 +3,8 @@
 // those tests (and all validation) skip when agy isn't on PATH.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -313,66 +314,153 @@ test('parseAgySemver extracts [major, minor, patch] from agy --version output', 
   assert.equal(parseAgySemver(''), null);
 });
 
-test('resolveAgyExecutable picks higher semver between ~/.gemini/bin/agy and PATH agy, and skips failing candidates', () => {
-  const homeDir = 'C:\\Users\\alice';
-  const geminiBin = join(homeDir, '.gemini', 'bin', 'agy.exe');
+test('resolveAgyExecutable picks higher semver between ~/.gemini/bin/agy and PATH agy, and skips missing or failing candidates', () => {
+  const homeDir = mkdtempSync(join(tmpdir(), 'porter-home-win-'));
+  const posixHome = mkdtempSync(join(tmpdir(), 'porter-home-posix-'));
+  const missingHome = mkdtempSync(join(tmpdir(), 'porter-home-missing-'));
+  try {
+    const geminiBin = join(homeDir, '.gemini', 'bin', 'agy.exe');
+    mkdirSync(join(homeDir, '.gemini', 'bin'), { recursive: true });
+    writeFileSync(geminiBin, '');
 
-  // ~/.gemini/bin/agy.exe (1.5.13) beats PATH agy (1.5.4)
-  assert.deepEqual(
-    resolveAgyExecutable(undefined, {
-      homeDir,
-      platform: 'win32',
-      env: {},
-      probe: (cmd) => ({ status: 0, stdout: cmd === geminiBin ? '1.5.13\n' : '1.5.4\n', stderr: '' }),
-    }),
-    { command: geminiBin, version: '1.5.13', supportsSandbox: true },
-  );
+    // ~/.gemini/bin/agy.exe (1.5.13) beats PATH agy (1.5.4)
+    assert.deepEqual(
+      resolveAgyExecutable(undefined, {
+        homeDir,
+        platform: 'win32',
+        env: {},
+        probe: (cmd) => ({ status: 0, stdout: cmd === geminiBin ? '1.5.13\n' : '1.5.4\n', stderr: '' }),
+      }),
+      { command: geminiBin, version: '1.5.13', supportsSandbox: true },
+    );
 
-  // PATH agy (1.6.0) beats ~/.gemini/bin/agy.exe (1.5.13)
-  assert.deepEqual(
-    resolveAgyExecutable(undefined, {
-      homeDir,
-      platform: 'win32',
-      env: {},
-      probe: (cmd) => ({ status: 0, stdout: cmd === geminiBin ? '1.5.13\n' : '1.6.0\n', stderr: '' }),
-    }),
-    { command: 'agy', version: '1.6.0', supportsSandbox: true },
-  );
+    // PATH agy (1.6.0) beats ~/.gemini/bin/agy.exe (1.5.13)
+    assert.deepEqual(
+      resolveAgyExecutable(undefined, {
+        homeDir,
+        platform: 'win32',
+        env: {},
+        probe: (cmd) => ({ status: 0, stdout: cmd === geminiBin ? '1.5.13\n' : '1.6.0\n', stderr: '' }),
+      }),
+      { command: 'agy', version: '1.6.0', supportsSandbox: true },
+    );
 
-  // Ties go to ~/.gemini/bin/agy (POSIX binary name)
-  const posixHome = '/home/alice';
-  const posixBin = join(posixHome, '.gemini', 'bin', 'agy');
-  assert.deepEqual(
-    resolveAgyExecutable(undefined, {
-      homeDir: posixHome,
-      platform: 'linux',
-      env: {},
-      probe: () => ({ status: 0, stdout: 'agy version 1.5.13\n', stderr: '' }),
-    }),
-    { command: posixBin, version: '1.5.13', supportsSandbox: true },
-  );
+    // Ties go to ~/.gemini/bin/agy (POSIX binary name)
+    const posixBin = join(posixHome, '.gemini', 'bin', 'agy');
+    mkdirSync(join(posixHome, '.gemini', 'bin'), { recursive: true });
+    writeFileSync(posixBin, '');
+    assert.deepEqual(
+      resolveAgyExecutable(undefined, {
+        homeDir: posixHome,
+        platform: 'linux',
+        env: {},
+        probe: () => ({ status: 0, stdout: 'agy version 1.5.13\n', stderr: '' }),
+      }),
+      { command: posixBin, version: '1.5.13', supportsSandbox: true },
+    );
 
-  // Non-existent/failing ~/.gemini/bin candidate falls back to PATH agy (1.5.4 -> supportsSandbox: false)
-  assert.deepEqual(
-    resolveAgyExecutable(undefined, {
-      homeDir,
-      platform: 'win32',
-      env: {},
-      probe: (cmd) => (cmd === geminiBin ? { status: null, error: new Error('ENOENT') } : { status: 0, stdout: '1.5.4\n', stderr: '' }),
-    }),
-    { command: 'agy', version: '1.5.4', supportsSandbox: false },
-  );
+    // Failing ~/.gemini/bin candidate falls back to PATH agy (1.5.4 -> supportsSandbox: false)
+    assert.deepEqual(
+      resolveAgyExecutable(undefined, {
+        homeDir,
+        platform: 'win32',
+        env: {},
+        probe: (cmd) => (cmd === geminiBin ? { status: 1, stdout: '', stderr: 'broken' } : { status: 0, stdout: '1.5.4\n', stderr: '' }),
+      }),
+      { command: 'agy', version: '1.5.4', supportsSandbox: false },
+    );
 
-  // Neither candidate exists or runs cleanly -> offline fallback with supportsSandbox: true
-  const emptyHome = tempDir('porter-empty-home-');
-  assert.deepEqual(
-    resolveAgyExecutable(undefined, {
-      homeDir: emptyHome,
-      platform: 'win32',
-      env: { PATH: '', Path: '' },
-    }),
-    { command: 'agy', version: null, supportsSandbox: true },
-  );
+    // Non-existent ~/.gemini/bin/agy.exe is never passed to probe (even with custom probe)
+    const probedCmds = [];
+    assert.deepEqual(
+      resolveAgyExecutable(undefined, {
+        homeDir: missingHome,
+        platform: 'win32',
+        env: {},
+        probe: (cmd) => {
+          probedCmds.push(cmd);
+          return { status: 0, stdout: '1.5.4\n', stderr: '' };
+        },
+      }),
+      { command: 'agy', version: '1.5.4', supportsSandbox: false },
+    );
+    assert.deepEqual(probedCmds, ['agy']);
+
+    // Neither candidate exists or runs cleanly -> offline fallback with supportsSandbox: true
+    assert.deepEqual(
+      resolveAgyExecutable(undefined, {
+        homeDir: missingHome,
+        platform: 'win32',
+        env: { PATH: '', Path: '' },
+      }),
+      { command: 'agy', version: null, supportsSandbox: true },
+    );
+  } finally {
+    rmSync(homeDir, { recursive: true, force: true });
+    rmSync(posixHome, { recursive: true, force: true });
+    rmSync(missingHome, { recursive: true, force: true });
+  }
+});
+
+test('resolveAgyExecutable re-probes mid-session upgrades and installs without permanent caching', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'porter-nocache-'));
+  try {
+    const dynamicAgy = join(dir, 'agy-dyn.mjs');
+    assert.deepEqual(resolveAgyExecutable(dynamicAgy), {
+      command: dynamicAgy,
+      version: null,
+      supportsSandbox: true,
+    });
+
+    writeFileSync(dynamicAgy, "if (process.argv[2] === '--version') console.log('1.5.4');\n");
+    assert.deepEqual(resolveAgyExecutable(dynamicAgy), {
+      command: dynamicAgy,
+      version: '1.5.4',
+      supportsSandbox: false,
+    });
+
+    writeFileSync(dynamicAgy, "if (process.argv[2] === '--version') console.log('agy version 1.5.13');\n");
+    assert.deepEqual(resolveAgyExecutable(dynamicAgy), {
+      command: dynamicAgy,
+      version: '1.5.13',
+      supportsSandbox: true,
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('resolveAgyExecutable isolates --version HOME/USERPROFILE in a private mkdtempSync dir and cleans it up', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'porter-probe-home-'));
+  const leakMarker = join(tmpdir(), '.gemini-probe-leak-check');
+  try {
+    const reportFile = join(dir, 'probe-home.json');
+    const homeProbeAgy = join(dir, 'agy-home-check.mjs');
+    writeFileSync(
+      homeProbeAgy,
+      [
+        "import { writeFileSync } from 'node:fs';",
+        "import { join } from 'node:path';",
+        'const home = process.env.HOME;',
+        `writeFileSync(${JSON.stringify(reportFile)}, JSON.stringify({ home, userprofile: process.env.USERPROFILE }));`,
+        "writeFileSync(join(home, '.gemini-probe-leak-check'), 'x');",
+        "console.log('1.5.13');",
+      ].join('\n'),
+    );
+    assert.deepEqual(resolveAgyExecutable(homeProbeAgy), {
+      command: homeProbeAgy,
+      version: '1.5.13',
+      supportsSandbox: true,
+    });
+    const recorded = JSON.parse(readFileSync(reportFile, 'utf8'));
+    assert.equal(recorded.home, recorded.userprofile);
+    assert.notEqual(recorded.home, tmpdir());
+    assert.equal(existsSync(recorded.home), false, 'private probe HOME directory is removed after probing');
+    assert.equal(existsSync(leakMarker), false, 'nothing is written directly into shared tmpdir()');
+  } finally {
+    rmSync(leakMarker, { force: true });
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('resolveAgyExecutable returns explicit agy path or AGY_PORTER_AGY untouched without probing ~/.gemini/bin', () => {

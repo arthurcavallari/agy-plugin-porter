@@ -1,7 +1,7 @@
 // Previews and consent: a preview ports into a private folder, and an install takes it
 // only with the preview's tier and audit-findings digest handed back.
 import assert from 'node:assert/strict';
-import { readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { before, test } from 'node:test';
@@ -97,9 +97,12 @@ test('agyCommand delegates to resolveAgyExecutable and honors AGY_PORTER_AGY or 
 
   const saved = process.env.AGY_PORTER_AGY;
   delete process.env.AGY_PORTER_AGY;
+  const homeDir = mkdtempSync(join(tmpdir(), 'porter-consent-home-'));
+  const missingHome = mkdtempSync(join(tmpdir(), 'porter-consent-missing-'));
   try {
-    const homeDir = 'C:\\Users\\alice';
     const geminiBin = join(homeDir, '.gemini', 'bin', 'agy.exe');
+    mkdirSync(join(homeDir, '.gemini', 'bin'), { recursive: true });
+    writeFileSync(geminiBin, '');
     const chosen = agyCommand({
       homeDir,
       platform: 'win32',
@@ -107,7 +110,22 @@ test('agyCommand delegates to resolveAgyExecutable and honors AGY_PORTER_AGY or 
       probe: (cmd) => ({ status: 0, stdout: cmd === geminiBin ? '1.5.13\n' : '1.5.4\n', stderr: '' }),
     });
     assert.equal(chosen, geminiBin);
+
+    const probed = [];
+    const fallback = agyCommand({
+      homeDir: missingHome,
+      platform: 'win32',
+      env: {},
+      probe: (cmd) => {
+        probed.push(cmd);
+        return { status: 0, stdout: '1.5.13\n', stderr: '' };
+      },
+    });
+    assert.equal(fallback, 'agy');
+    assert.deepEqual(probed, ['agy']);
   } finally {
     process.env.AGY_PORTER_AGY = saved;
+    rmSync(homeDir, { recursive: true, force: true });
+    rmSync(missingHome, { recursive: true, force: true });
   }
 });
