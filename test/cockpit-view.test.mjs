@@ -233,6 +233,13 @@ test('Export report button invokes AgyShell.downloadFile synchronously in the cl
   assert.match(md, /high-entropy/);
   assert.match(md, /skills\/review\/SKILL\.md:3/);
   assert.match(md, /agents: reviewer/);
+
+  // Surfaces { ok: false, mode: 'failed' } as 'Export failed' even when res.error is undefined
+  win.AgyShell.downloadFile = async () => ({ ok: false, mode: 'failed' });
+  exportBtn.dispatchEvent(new win.Event('click'));
+  await settle();
+  assert.ok($('status').classList.contains('is-error'), 'error banner shown when downloadFile returns ok: false without error');
+  assert.equal($('status').textContent, 'Export failed');
 });
 
 test('Export report falls back safely to AgyUI.openDownloadModal when AgyShell is absent in standalone harness', async () => {

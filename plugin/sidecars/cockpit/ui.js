@@ -101,7 +101,7 @@
     };
     if (typeof window.AgyShell?.downloadFile === 'function') {
       Promise.resolve(window.AgyShell.downloadFile(opts)).then((res) => {
-        if (res && res.ok === false && res.error) status(res.error.message || 'Export failed', 'is-error');
+        if (res && res.ok === false) status(res.error?.message || 'Export failed', 'is-error');
       }).catch((err) => status(err?.message || 'Export failed', 'is-error'));
       return;
     }

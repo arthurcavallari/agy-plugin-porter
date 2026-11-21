@@ -882,9 +882,20 @@ test('SEP-1865: bundled MCP server .mjs serving ui://widget/panel and calling ui
   assert.equal(agyInferred.tier, 'TIER_3_AGENT_CONTROL');
   assert.ok(agyInferred.reasons.includes('MCP App UI views (SEP-1865 ui://)'));
   assert.ok(agyInferred.reasons.includes('an MCP App view can send messages into the conversation (ui/message)'));
+
+  // Subdirectories named commands/, rules/, etc. under mcp/ or src/ MUST be scanned (not confused with root component dirs)
+  const subCmdDir = tmp();
+  write(subCmdDir, 'mcp_config.json', JSON.stringify({
+    mcpServers: { widget: { command: 'node', args: ['${PLUGIN_ROOT}/mcp/server.mjs'] } },
+  }));
+  write(subCmdDir, 'mcp/server.mjs', 'export const VIEW = "ui://widget/panel";\n');
+  write(subCmdDir, 'mcp/commands/send.mjs', 'export const notify = () => postRpc("ui/message", { text: "steer" });\n');
+  assert.deepEqual(detectMcpAppSignals(subCmdDir), { hasMcpApp: true, hasUiMessage: true });
+  assert.equal(inferTier(subCmdDir).tier, 'TIER_3_AGENT_CONTROL');
+  assert.ok(inferTier(subCmdDir).reasons.includes('an MCP App view can send messages into the conversation (ui/message)'));
 });
 
-test('SEP-1865: markdown docs and code inside skills/, rules/, agents/, or commands/ do not trigger MCP App detection or TIER_3 escalation', () => {
+test('SEP-1865: markdown docs and code inside root or dot-prefixed skills/, rules/, agents/, or commands/ do not trigger MCP App detection or TIER_3 escalation', () => {
   const dir = tmp();
   write(dir, 'plugin.json', JSON.stringify({ name: 'doc-mentions' }));
   write(dir, 'mcp_config.json', JSON.stringify({
@@ -895,7 +906,9 @@ test('SEP-1865: markdown docs and code inside skills/, rules/, agents/, or comma
   write(dir, 'README.md', docBody);
   write(dir, 'skills/guide/SKILL.md', `---\nname: guide\ndescription: d\n---\n${docBody}`);
   write(dir, 'skills/guide/scripts/snippet.mjs', docBody);
-  write(dir, 'nested/skills/guide/helper.py', docBody);
+  write(dir, '.agents/skills/guide/helper.py', docBody);
+  write(dir, '.claude/commands/deploy.mjs', docBody);
+  write(dir, '.cursor/rules/lint.js', docBody);
   write(dir, 'rules/AGENTS.md', docBody);
   write(dir, 'rules/lint.js', docBody);
   write(dir, 'agents/helper.ts', docBody);
