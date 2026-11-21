@@ -11,7 +11,7 @@ import { compileModes, mapClaudeModel, mapClaudeTools, mapRooGroups } from '../l
 import { compileRules, cursorTrigger } from '../lib/rules-compiler.mjs';
 import { compileSkills, slugifyName } from '../lib/skill-compiler.mjs';
 import { copyTree, findLicense, parseSourceSpec, removeTree, resolveSource } from '../lib/source.mjs';
-import { auditPlugin, auditText, inferTier, looksRandom } from '../lib/static-auditor.mjs';
+import { auditPlugin, auditText, detectMcpAppSignals, inferTier, looksRandom } from '../lib/static-auditor.mjs';
 import { splitFrontmatter } from '../lib/yaml-lite.mjs';
 import { removeLater, tempDir } from './temp.mjs';
 
@@ -819,6 +819,105 @@ test('mapClaudeModel dynamically resolves unhardcoded future models structurally
     tier: undefined,
     dropped: true,
   });
+});
+
+test('SEP-1865: bundled MCP server .mjs serving ui://widget/panel + text/html;profile=mcp-app reports TIER_2_LOCAL_TOOLING with MCP App reason', () => {
+  const dir = tmp();
+  write(dir, 'plugin.json', JSON.stringify({ name: 'widget-plugin' }));
+  write(dir, 'mcp_config.json', JSON.stringify({
+    mcpServers: { widget: { command: 'node', args: ['${PLUGIN_ROOT}/mcp/server.mjs'] } },
+  }));
+  write(dir, 'mcp/server.mjs', [
+    'const RESOURCE_URI = "ui://widget/panel";',
+    'const MIME = "text/html;profile=mcp-app";',
+    'export function serve() { return { uri: RESOURCE_URI, mimeType: MIME }; }',
+  ].join('\n'));
+
+  assert.deepEqual(detectMcpAppSignals(dir), { hasMcpApp: true, hasUiMessage: false });
+  const inferred = inferTier(dir);
+  assert.equal(inferred.tier, 'TIER_2_LOCAL_TOOLING');
+  assert.ok(inferred.reasons.includes('MCP App UI views (SEP-1865 ui://)'), JSON.stringify(inferred.reasons));
+  assert.equal(inferred.reasons.includes('an MCP App view can send messages into the conversation (ui/message)'), false);
+  assert.equal(auditPlugin(dir).tier, 'TIER_2_LOCAL_TOOLING');
+
+  const extAppsDir = tmp();
+  write(extAppsDir, '.mcp.json', JSON.stringify({
+    mcpServers: { app: { command: 'node', args: ['server.js'] } },
+  }));
+  write(extAppsDir, 'src/server.js', 'import { registerAppTool } from "@modelcontextprotocol/ext-apps";\n');
+  assert.equal(inferTier(extAppsDir).tier, 'TIER_2_LOCAL_TOOLING');
+  assert.ok(inferTier(extAppsDir).reasons.includes('MCP App UI views (SEP-1865 ui://)'));
+
+  const noMcpDir = tmp();
+  write(noMcpDir, 'plugin.json', JSON.stringify({ name: 'no-mcp' }));
+  write(noMcpDir, 'scripts/helper.mjs', 'const u = "ui://widget/panel"; const m = "ui/message";\n');
+  assert.deepEqual(detectMcpAppSignals(noMcpDir), { hasMcpApp: false, hasUiMessage: false });
+  assert.equal(inferTier(noMcpDir).tier, 'TIER_1_TELEMETRY');
+});
+
+test('SEP-1865: bundled MCP server .mjs serving ui://widget/panel and calling ui/message or com.google.antigravity/message escalates to TIER_3_AGENT_CONTROL', () => {
+  const dir = tmp();
+  write(dir, 'mcp_config.json', JSON.stringify({
+    mcpServers: { widget: { command: 'node', args: ['${PLUGIN_ROOT}/mcp/server.mjs'] } },
+  }));
+  write(dir, 'mcp/server.mjs', [
+    'const uri = "ui://widget/panel";',
+    'const html = `<script>window.parent.postMessage({ jsonrpc: "2.0", method: "ui/message", params: { text: "run deploy" } }, "*");</script>`;',
+  ].join('\n'));
+
+  assert.deepEqual(detectMcpAppSignals(dir), { hasMcpApp: true, hasUiMessage: true });
+  const inferred = inferTier(dir);
+  assert.equal(inferred.tier, 'TIER_3_AGENT_CONTROL');
+  assert.ok(inferred.reasons.includes('MCP App UI views (SEP-1865 ui://)'));
+  assert.ok(inferred.reasons.includes('an MCP App view can send messages into the conversation (ui/message)'));
+
+  const agyMsgDir = tmp();
+  write(agyMsgDir, 'plugin.json', JSON.stringify({
+    name: 'agy-msg-app',
+    mcpServers: { panel: { command: 'node', args: ['dist/server.mjs'] } },
+  }));
+  write(agyMsgDir, 'dist/server.mjs', 'const mime = "text/html; profile=mcp-app";\n');
+  write(agyMsgDir, 'dist/view.tsx', 'postRpc("com.google.antigravity/message", { prompt: "continue" });\n');
+  const agyInferred = inferTier(agyMsgDir);
+  assert.equal(agyInferred.tier, 'TIER_3_AGENT_CONTROL');
+  assert.ok(agyInferred.reasons.includes('MCP App UI views (SEP-1865 ui://)'));
+  assert.ok(agyInferred.reasons.includes('an MCP App view can send messages into the conversation (ui/message)'));
+});
+
+test('SEP-1865: markdown docs and code inside skills/, rules/, agents/, or commands/ do not trigger MCP App detection or TIER_3 escalation', () => {
+  const dir = tmp();
+  write(dir, 'plugin.json', JSON.stringify({ name: 'doc-mentions' }));
+  write(dir, 'mcp_config.json', JSON.stringify({
+    mcpServers: { plain: { command: 'node', args: ['${PLUGIN_ROOT}/mcp/plain.mjs'] } },
+  }));
+  write(dir, 'mcp/plain.mjs', 'export const name = "plain-stdio-server";\n');
+  const docBody = 'Docs mentioning ui://widget/panel, text/html;profile=mcp-app, @modelcontextprotocol/ext-apps, ui/message, and com.google.antigravity/message.\n';
+  write(dir, 'README.md', docBody);
+  write(dir, 'skills/guide/SKILL.md', `---\nname: guide\ndescription: d\n---\n${docBody}`);
+  write(dir, 'skills/guide/scripts/snippet.mjs', docBody);
+  write(dir, 'nested/skills/guide/helper.py', docBody);
+  write(dir, 'rules/AGENTS.md', docBody);
+  write(dir, 'rules/lint.js', docBody);
+  write(dir, 'agents/helper.ts', docBody);
+  write(dir, 'commands/deploy.md', docBody);
+  write(dir, 'commands/deploy.cjs', docBody);
+
+  assert.deepEqual(detectMcpAppSignals(dir), { hasMcpApp: false, hasUiMessage: false });
+  const inferred = inferTier(dir);
+  assert.equal(inferred.tier, 'TIER_2_LOCAL_TOOLING');
+  assert.deepEqual(inferred.reasons, ['MCP servers: plain']);
+
+  write(dir, 'agents/helper.md', `---\nname: helper\ndescription: d\n---\n${docBody}`);
+  assert.deepEqual(detectMcpAppSignals(dir), { hasMcpApp: false, hasUiMessage: false });
+  assert.deepEqual(inferTier(dir).reasons, ['MCP servers: plain', 'agents: helper']);
+
+  // Self-audit guard: copying lib/static-auditor.mjs and plugin/ into a plugin with an MCP server must not self-detect
+  const selfDir = tmp();
+  const rootDir = fileURLToPath(new URL('..', import.meta.url));
+  copyTree(join(rootDir, 'plugin'), selfDir);
+  copyTree(join(rootDir, 'lib'), join(selfDir, 'lib'));
+  assert.deepEqual(detectMcpAppSignals(selfDir), { hasMcpApp: false, hasUiMessage: false });
+  assert.equal(inferTier(selfDir).reasons.some((r) => r.includes('MCP App')), false);
 });
 
 

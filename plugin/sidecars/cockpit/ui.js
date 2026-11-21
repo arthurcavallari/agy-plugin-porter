@@ -57,6 +57,74 @@
       : badge(`Validation failed (${v.errors.length})`, 'errored', { icon: 'error' });
   }
 
+  function formatMarkdownReport(p) {
+    const r = p.report ?? {};
+    const v = r.validation;
+    const list = (items, fmt) => (items?.length ? items.map((x) => `- ${fmt(x)}`).join('\n') : '_None._');
+    const validationLine = !v
+      ? 'Not validated (`agy` not on PATH)'
+      : v.ok
+        ? 'Passed'
+        : `Failed (${(v.errors ?? []).length} error${(v.errors ?? []).length === 1 ? '' : 's'})`;
+    return [
+      `# ${p.slug} — Port Report`,
+      '',
+      `- **Source:** \`${p.source ?? ''}\`${p.path ? ` (path \`${p.path}\`)` : ''}${r.sourceCommit ? ` @ \`${r.sourceCommit.slice(0, 12)}\`` : ''}`,
+      `- **Ecosystems:** ${(r.ecosystems ?? []).join(' + ') || 'unknown'}`,
+      `- **Capability tier:** \`${p.tier}\` — ${tierOf(p.tier).label}`,
+      `- **Validation:** ${validationLine}`,
+      '',
+      `## Ported (${(r.ported ?? []).length})`,
+      list(r.ported, (x) => x),
+      '',
+      `## Not ported (${(r.unported ?? []).length})`,
+      list(r.unported, (u) => `\`${u.item}\` — ${u.reason}`),
+      '',
+      `## Warnings (${(r.warnings ?? []).length})`,
+      list(r.warnings, (w) => w),
+      '',
+      `## Audit findings (${(r.flags ?? []).length})`,
+      list(r.flags, (f) => `[${f.severity}] \`${f.kind}\`${f.file ? ` in \`${f.file}${f.line ? `:${f.line}` : ''}\`` : ''}${f.excerpt ? ` — \`${f.excerpt}\`` : ''}`),
+      '',
+      `## Why this tier (${(r.tierReasons ?? []).length})`,
+      list(r.tierReasons, (x) => x),
+      '',
+    ].join('\n');
+  }
+
+  function exportReport(p) {
+    const opts = {
+      filename: `${p.slug}-port-report.md`,
+      mimeType: 'text/markdown;charset=utf-8',
+      title: `${p.slug} port report`,
+      produce: () => formatMarkdownReport(p),
+    };
+    if (typeof window.AgyShell?.downloadFile === 'function') {
+      Promise.resolve(window.AgyShell.downloadFile(opts)).then((res) => {
+        if (res && res.ok === false && res.error) status(res.error.message || 'Export failed', 'is-error');
+      }).catch((err) => status(err?.message || 'Export failed', 'is-error'));
+      return;
+    }
+    const md = opts.produce();
+    const BlobCtor = window.Blob || (typeof Blob === 'function' ? Blob : null);
+    const blob = BlobCtor ? new BlobCtor([md], { type: opts.mimeType }) : null;
+    if (blob && typeof ui.openDownloadModal === 'function' && ui.openDownloadModal({ blob, filename: opts.filename, title: opts.title })) {
+      return;
+    }
+    const UrlApi = window.URL || (typeof URL !== 'undefined' ? URL : null);
+    if (blob && typeof UrlApi?.createObjectURL === 'function') {
+      const href = UrlApi.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = opts.filename;
+      a.rel = 'noopener';
+      (document.body || document.documentElement)?.appendChild?.(a);
+      try { a.click?.(); } finally { a.remove?.(); }
+      const timer = setTimeout(() => { try { UrlApi.revokeObjectURL?.(href); } catch {} }, 10_000);
+      timer?.unref?.();
+    }
+  }
+
   function showReport(p) {
     current = p;
     const r = p.report;
@@ -79,6 +147,7 @@
         f.file ? ` <code>${esc(f.file)}${f.line ? `:${f.line}` : ''}</code>` : ''}`)}
       ${section('Why this tier', r.tierReasons, (x) => esc(x))}
       <div id="install-row" class="cockpit-actions">
+        <button id="export-report" type="button" class="agy-btn agy-btn-secondary">Export report</button>
         <button id="install" type="button" class="agy-btn agy-btn-primary"${r.validation?.ok ? '' : ' disabled'}>Install…</button>
       </div>
       <div id="consent" class="agy-consent-bar hidden">
@@ -88,6 +157,7 @@
           <button id="ok" type="button" class="agy-btn agy-btn-primary">Confirm install</button>
         </div>
       </div>`;
+    $('export-report').addEventListener('click', () => exportReport(p));
     $('install').addEventListener('click', confirmInstall);
     $('cancel').addEventListener('click', () => {
       closeConsent();

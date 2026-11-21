@@ -5,6 +5,7 @@ This is the Phase 0 scorecard for `agy-plugin-porter` (see `docs/plan.md`). It m
 **Runs.**
 - Phase 0: 2026-10-22, agy 1.3.5.
 - Step 0 re-run: 2026-10-22, agy 1.4.4. agy auto-updated to 1.4.5 in the background during the first live turn. Every row below was re-checked on 1.4.5. The 1.4.4 runs done before the update (staging, `validate`, JSON deny, SessionStart) gave the same results.
+- Antigravity 2.34.0 re-check: agy 1.5.13 (`~/.gemini/bin/agy`). Adds `sidecar.json` `"sandbox"` schema support and enables SEP-1865 MCP Apps (`enable-mcp-apps: enabled` live).
 
 **Method.** Each run used a throwaway home: `USERPROFILE`/`HOME` pointed at a scratch dir. agy honors both, and auth still works. The real `~/.gemini/config` and `antigravity-cli/settings.json` were hash-checked before and after, and were unchanged. Fixtures are in `test/fixtures/`. "Live" means a real headless agent turn (`agy -p`) with the plugin installed. "Validator" means `agy plugin validate` output, which 1.4.x builds from the loader's own rules. It's agy's word, not a live turn.
 
@@ -20,6 +21,11 @@ These are point-in-time results against one agy build. The plan's CI differentia
 - **Claude agents no longer load.** `tools: Read, Grep` (a string) fails YAML unmarshalling into a list, so the loader skips the agent. 1.3.5 still counted it.
 - **`${PLUGIN_ROOT}` and `${PLUGIN_DATA}` are expanded in plugin MCP `args`, `env` and `cwd`.** This is confirmed live for `args`. They are not expanded in hook commands (agy's own error string, static).
 - **`agy plugin validate` is now a real oracle.** It flags Claude-shaped hooks, Claude tool names in matchers (and names the agy tool), unknown events, `hooks/hooks.json`, `.mcp.json`, `commands/`, a root `GEMINI.md`, and skills without `name`.
+
+## Changes in Antigravity 2.34.0 (`agy 1.5.13`)
+
+- **`sidecar.json` `"sandbox"` support (`agy >= 1.5.13`).** `agy plugin validate` accepts top-level `"sandbox"` (such as `{"disable_sandbox": true}`) on sidecars starting in `agy 1.5.13`. Because an older standalone `agy` on `PATH` rejects `"sandbox"`, `resolveAgyExecutable` compares semver against `~/.gemini/bin/agy` and prefers the newer binary; `compileMods` omits `"sandbox"` with a warning only when the resolved `agy` is older than `1.5.13`.
+- **SEP-1865 MCP Apps live (`enable-mcp-apps: enabled`).** Antigravity `2.34.0` enables SEP-1865 MCP App UI views (`ui://` resources served with `text/html;profile=mcp-app` or `@modelcontextprotocol/ext-apps`). Static audit (`detectMcpAppSignals` in `lib/static-auditor.mjs`) scans only code files outside `skills/`, `rules/`, `agents/`, and `commands/` when at least one MCP server is declared, adding `'MCP App UI views (SEP-1865 ui://)'` (`TIER_2_LOCAL_TOOLING`) and escalating to `TIER_3_AGENT_CONTROL` (`'an MCP App view can send messages into the conversation (ui/message)'`) when the code also calls `ui/message` or `com.google.antigravity/message`.
 
 ## How import works
 

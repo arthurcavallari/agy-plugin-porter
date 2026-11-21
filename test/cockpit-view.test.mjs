@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { AGY_CLIENT_JS } from 'antigravity-sidecar-kit/shell';
 import { attachAgyUI } from 'antigravity-sidecar-kit/ui';
 import { parseHTML } from 'linkedom';
 
@@ -22,9 +23,18 @@ const PREVIEW = {
   },
 };
 
-function loadView({ preview = PREVIEW } = {}) {
+function loadView({ preview = PREVIEW, withShell = true } = {}) {
   const html = readFileSync(`${COCKPIT}ui.html`, 'utf8');
   const { window: win, document: doc } = parseHTML(html);
+  if (withShell) {
+    new Function('window', 'document', 'URL', 'URLSearchParams', 'Blob', 'setTimeout', 'clearTimeout', AGY_CLIENT_JS)(
+      win, doc, win.URL ?? URL, win.URLSearchParams ?? URLSearchParams, win.Blob ?? Blob,
+      win.setTimeout ? win.setTimeout.bind(win) : setTimeout,
+      win.clearTimeout ? win.clearTimeout.bind(win) : clearTimeout,
+    );
+  } else {
+    delete win.AgyShell;
+  }
   attachAgyUI(win);
   const calls = [];
   const fetchStub = async (path, init = {}) => {
@@ -173,4 +183,72 @@ test('an unvalidated port cannot be installed', async () => {
   await settle();
   assert.equal($('install').disabled, true);
   assert.match($('report').querySelector('.cockpit-badges').textContent, /Not validated/);
+});
+
+test('Export report button invokes AgyShell.downloadFile synchronously in the click turn with full Markdown report', async () => {
+  const html = readFileSync(`${COCKPIT}ui.html`, 'utf8');
+  assert.match(html, /<script[^>]+src="\/shell\.js"[^>]*><\/script>/);
+
+  const preview = {
+    ...PREVIEW,
+    report: { ...PREVIEW.report, warnings: ['source: no @ref given, so the port used the default branch'] },
+  };
+  const { win, $ } = loadView({ preview });
+  await settle();
+
+  const downloadCalls = [];
+  const origDownload = win.AgyShell.downloadFile.bind(win.AgyShell);
+  win.AgyShell.downloadFile = (opts) => {
+    downloadCalls.push(opts);
+    return origDownload(opts);
+  };
+
+  $('form').dispatchEvent(new win.Event('submit', { cancelable: true }));
+  await settle();
+
+  const exportBtn = $('export-report');
+  assert.ok(exportBtn, '#export-report rendered inside #install-row');
+  assert.equal(exportBtn.parentElement.id, 'install-row');
+  assert.equal(exportBtn.className, 'agy-btn agy-btn-secondary');
+  assert.equal(exportBtn.textContent, 'Export report');
+
+  // Popup-escape rule: downloadFile MUST be called synchronously inside the click turn (zero preceding await)
+  exportBtn.dispatchEvent(new win.Event('click'));
+  assert.equal(downloadCalls.length, 1, 'downloadFile called synchronously in click event handler');
+
+  const opts = downloadCalls[0];
+  assert.equal(opts.filename, 'review-port-report.md');
+  assert.equal(opts.mimeType, 'text/markdown;charset=utf-8');
+  assert.equal(opts.title, 'review port report');
+  assert.equal(typeof opts.produce, 'function');
+
+  const md = opts.produce();
+  assert.match(md, /review/);
+  assert.match(md, /TIER_3_AGENT_CONTROL/);
+  assert.match(md, /skill:review/);
+  assert.match(md, /agent:reviewer/);
+  assert.match(md, /hook:UserPromptSubmit/);
+  assert.match(md, /no agy event/);
+  assert.match(md, /source: no @ref given/);
+  assert.match(md, /high-entropy/);
+  assert.match(md, /skills\/review\/SKILL\.md:3/);
+  assert.match(md, /agents: reviewer/);
+});
+
+test('Export report falls back safely to AgyUI.openDownloadModal when AgyShell is absent in standalone harness', async () => {
+  const preview = { ...PREVIEW, report: { ...PREVIEW.report, validation: null } };
+  const { win, doc, $ } = loadView({ preview, withShell: false });
+  await settle();
+  $('form').dispatchEvent(new win.Event('submit', { cancelable: true }));
+  await settle();
+
+  const exportBtn = $('export-report');
+  assert.ok(exportBtn);
+  assert.equal(exportBtn.disabled, false, 'export remains enabled even when validation is null');
+  exportBtn.dispatchEvent(new win.Event('click'));
+  await settle();
+
+  const modal = doc.querySelector('.agy-download-modal');
+  assert.ok(modal, 'fallback opened AgyUI download modal');
+  assert.match(modal.textContent, /review-port-report\.md/);
 });
