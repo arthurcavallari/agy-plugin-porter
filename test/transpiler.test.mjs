@@ -8,13 +8,13 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { portPackage } from '../lib/index.mjs';
+import { parseAgySemver, portPackage, resolveAgyExecutable } from '../lib/index.mjs';
 import { loadEsbuild } from '../lib/mod-transform.mjs';
 import { stageWithAgy, transpile } from '../lib/transpiler-engine.mjs';
 import { tempDir } from './temp.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
-const hasAgy = spawnSync('agy', ['--version'], { encoding: 'utf8' }).status === 0;
+const hasAgy = resolveAgyExecutable().version !== null;
 const out = () => join(tempDir('porter-e2e-'), 'out');
 const files = (dir, rel = '') => readdirSync(join(dir, rel), { withFileTypes: true }).flatMap((e) =>
   (e.isDirectory() ? files(dir, `${rel}${e.name}/`) : [`${rel}${e.name}`])).sort();
@@ -239,6 +239,15 @@ test('CLI: --json report, usage errors', () => {
   const missing = spawnSync(process.execPath, [bin, '--source', 'not a path or repo', '--out', out()], { encoding: 'utf8' });
   assert.equal(missing.status, 1);
   assert.match(missing.stderr, /neither an existing path nor owner\/repo/);
+
+  const stub = fileURLToPath(new URL('./agy-stub.mjs', import.meta.url));
+  const stubLog = join(tempDir('porter-cli-install-'), 'agy.log');
+  const installRun = spawnSync(process.execPath, [bin, '--source', fixture('cursor'), '--install'], {
+    encoding: 'utf8',
+    env: { ...process.env, AGY_PORTER_AGY: stub, AGY_STUB_LOG: stubLog },
+  });
+  assert.equal(installRun.status, 0, installRun.stderr);
+  assert.ok(readFileSync(stubLog, 'utf8').includes('"install"'));
 });
 
 test('PRT-14: multi-plugin .claude-plugin/marketplace.json lists --path choices or ports --plugin selection, and agy validate accepts max_turns/execution_policy/subagents', { skip: !hasAgy && 'agy not on PATH' }, async () => {
@@ -294,4 +303,135 @@ test('stageWithAgy resolves both nested plugins/<slug>/<ver>/ and <slug>@<ver>/ 
   const stagedNested = stageWithAgy(standInDir, { agy: fakeAgy, workDir: workNested });
   assert.ok(existsSync(join(stagedNested, '.antigravity-plugin', 'plugin.json')));
   assert.match(stagedNested, /acme-tool[\\/]1\.2\.3$/);
+});
+
+test('parseAgySemver extracts [major, minor, patch] from agy --version output', () => {
+  assert.deepEqual(parseAgySemver('1.5.13\n'), [1, 5, 13]);
+  assert.deepEqual(parseAgySemver('agy version 1.5.13 (windows/amd64)'), [1, 5, 13]);
+  assert.deepEqual(parseAgySemver('1.5.4'), [1, 5, 4]);
+  assert.equal(parseAgySemver('custom-dev'), null);
+  assert.equal(parseAgySemver(''), null);
+});
+
+test('resolveAgyExecutable picks higher semver between ~/.gemini/bin/agy and PATH agy, and skips failing candidates', () => {
+  const homeDir = 'C:\\Users\\alice';
+  const geminiBin = join(homeDir, '.gemini', 'bin', 'agy.exe');
+
+  // ~/.gemini/bin/agy.exe (1.5.13) beats PATH agy (1.5.4)
+  assert.deepEqual(
+    resolveAgyExecutable(undefined, {
+      homeDir,
+      platform: 'win32',
+      env: {},
+      probe: (cmd) => ({ status: 0, stdout: cmd === geminiBin ? '1.5.13\n' : '1.5.4\n', stderr: '' }),
+    }),
+    { command: geminiBin, version: '1.5.13', supportsSandbox: true },
+  );
+
+  // PATH agy (1.6.0) beats ~/.gemini/bin/agy.exe (1.5.13)
+  assert.deepEqual(
+    resolveAgyExecutable(undefined, {
+      homeDir,
+      platform: 'win32',
+      env: {},
+      probe: (cmd) => ({ status: 0, stdout: cmd === geminiBin ? '1.5.13\n' : '1.6.0\n', stderr: '' }),
+    }),
+    { command: 'agy', version: '1.6.0', supportsSandbox: true },
+  );
+
+  // Ties go to ~/.gemini/bin/agy (POSIX binary name)
+  const posixHome = '/home/alice';
+  const posixBin = join(posixHome, '.gemini', 'bin', 'agy');
+  assert.deepEqual(
+    resolveAgyExecutable(undefined, {
+      homeDir: posixHome,
+      platform: 'linux',
+      env: {},
+      probe: () => ({ status: 0, stdout: 'agy version 1.5.13\n', stderr: '' }),
+    }),
+    { command: posixBin, version: '1.5.13', supportsSandbox: true },
+  );
+
+  // Non-existent/failing ~/.gemini/bin candidate falls back to PATH agy (1.5.4 -> supportsSandbox: false)
+  assert.deepEqual(
+    resolveAgyExecutable(undefined, {
+      homeDir,
+      platform: 'win32',
+      env: {},
+      probe: (cmd) => (cmd === geminiBin ? { status: null, error: new Error('ENOENT') } : { status: 0, stdout: '1.5.4\n', stderr: '' }),
+    }),
+    { command: 'agy', version: '1.5.4', supportsSandbox: false },
+  );
+
+  // Neither candidate exists or runs cleanly -> offline fallback with supportsSandbox: true
+  const emptyHome = tempDir('porter-empty-home-');
+  assert.deepEqual(
+    resolveAgyExecutable(undefined, {
+      homeDir: emptyHome,
+      platform: 'win32',
+      env: { PATH: '', Path: '' },
+    }),
+    { command: 'agy', version: null, supportsSandbox: true },
+  );
+});
+
+test('resolveAgyExecutable returns explicit agy path or AGY_PORTER_AGY untouched without probing ~/.gemini/bin', () => {
+  const stub = fileURLToPath(new URL('./agy-stub.mjs', import.meta.url));
+  const homeDir = 'C:\\Users\\alice';
+  const calls = [];
+  const probe = (cmd, args) => {
+    calls.push([cmd, args]);
+    return { status: 0, stdout: 'agy version 1.5.13\n', stderr: '' };
+  };
+
+  assert.deepEqual(
+    resolveAgyExecutable(stub, { homeDir, platform: 'win32', env: {}, probe }),
+    { command: stub, version: '1.5.13', supportsSandbox: true },
+  );
+  assert.deepEqual(calls, [[stub, ['--version']]]);
+
+  calls.length = 0;
+  assert.deepEqual(
+    resolveAgyExecutable('agy', { homeDir, platform: 'win32', env: { AGY_PORTER_AGY: stub }, probe }),
+    { command: stub, version: '1.5.13', supportsSandbox: true },
+  );
+  assert.deepEqual(calls, [[stub, ['--version']]]);
+});
+
+test('transpile gates sidecar sandbox on resolved agy semver (>= 1.5.13)', { skip: !loadEsbuild() && 'esbuild not installed' }, () => {
+  const dir = tempDir('porter-agy-ver-');
+  const writeStandIn = (name, ver) => {
+    const p = join(dir, name);
+    writeFileSync(
+      p,
+      [
+        "import { cpSync, mkdirSync } from 'node:fs';",
+        "import { join } from 'node:path';",
+        'const args = process.argv.slice(2);',
+        `if (args[0] === '--version') console.log(${JSON.stringify(ver)});`,
+        "else if (args[0] === 'plugin' && args[1] === 'install') {",
+        '  const home = process.env.HOME || process.env.USERPROFILE;',
+        "  const dest = join(home, '.gemini', 'config', 'plugins', 'fixture-claude-mod');",
+        '  mkdirSync(dest, { recursive: true });',
+        '  cpSync(args[2], dest, { recursive: true });',
+        '}',
+      ].join('\n'),
+    );
+    return p;
+  };
+
+  const oldOut = out();
+  const oldReport = transpile({ srcDir: fixture('claude-mod'), outDir: oldOut, agy: writeStandIn('agy-154.mjs', '1.5.4') });
+  const oldSidecar = JSON.parse(readFileSync(join(oldOut, 'sidecars/pane/sidecar.json'), 'utf8'));
+  assert.equal('sandbox' in oldSidecar, false);
+  assert.ok(
+    oldReport.warnings.includes('ui-mod:hooks/register.tsx: omitted sidecar.json "sandbox" because resolved agy (1.5.4) is older than 1.5.13'),
+    JSON.stringify(oldReport.warnings),
+  );
+
+  const newOut = out();
+  const newReport = transpile({ srcDir: fixture('claude-mod'), outDir: newOut, agy: writeStandIn('agy-1513.mjs', 'agy version 1.5.13') });
+  const newSidecar = JSON.parse(readFileSync(join(newOut, 'sidecars/pane/sidecar.json'), 'utf8'));
+  assert.deepEqual(newSidecar.sandbox, { disable_sandbox: true });
+  assert.ok(!newReport.warnings.some((w) => w.includes('omitted sidecar.json "sandbox"')), JSON.stringify(newReport.warnings));
 });

@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { createPreview, flagsDigest, installPreview, listPreviews, previewsDir, readPreview } from '../lib/consent.mjs';
+import { agyCommand, createPreview, flagsDigest, installPreview, listPreviews, previewsDir, readPreview } from '../lib/consent.mjs';
+import { resolveAgyExecutable } from '../lib/index.mjs';
 import { tempDir } from './temp.mjs';
 
 const fixture = (name) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
@@ -83,5 +84,30 @@ test('without agy a preview still ports, but can\'t be installed', async () => {
     await assert.rejects(installPreview({ previewId: preview.id, acceptedTier: preview.tier, acceptedFlags: preview.flagsDigest }), /agy isn't on PATH/);
   } finally {
     process.env.AGY_PORTER_AGY = STUB;
+  }
+});
+
+test('agyCommand delegates to resolveAgyExecutable and honors AGY_PORTER_AGY or higher-semver ~/.gemini/bin/agy', () => {
+  assert.equal(agyCommand(), STUB);
+  assert.deepEqual(resolveAgyExecutable(STUB), {
+    command: STUB,
+    version: '1.5.13',
+    supportsSandbox: true,
+  });
+
+  const saved = process.env.AGY_PORTER_AGY;
+  delete process.env.AGY_PORTER_AGY;
+  try {
+    const homeDir = 'C:\\Users\\alice';
+    const geminiBin = join(homeDir, '.gemini', 'bin', 'agy.exe');
+    const chosen = agyCommand({
+      homeDir,
+      platform: 'win32',
+      env: {},
+      probe: (cmd) => ({ status: 0, stdout: cmd === geminiBin ? '1.5.13\n' : '1.5.4\n', stderr: '' }),
+    });
+    assert.equal(chosen, geminiBin);
+  } finally {
+    process.env.AGY_PORTER_AGY = saved;
   }
 });

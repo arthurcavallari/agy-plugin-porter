@@ -5,6 +5,9 @@
   "display_name": "Plugin Porter",
   "has_web_ui": true,
   "restart_policy": "always",
+  "sandbox": {
+    "disable_sandbox": true
+  },
   "ui_config": {
     "display_name": "Plugin Porter",
     "views": [

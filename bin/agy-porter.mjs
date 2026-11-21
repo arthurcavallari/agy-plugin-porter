@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util';
 
 import { portPackage } from '../lib/index.mjs';
 import { removeTree } from '../lib/source.mjs';
-import { spawnAgy } from '../lib/transpiler-engine.mjs';
+import { resolveAgyExecutable, spawnAgy } from '../lib/transpiler-engine.mjs';
 
 const USAGE = `Usage: agy-porter --source <path|owner/repo@ref|github link> [options]
 
@@ -79,7 +79,7 @@ async function main() {
     }
     if (report.validation && !report.validation.ok) return 2;
     if (opts.install) {
-      const run = spawnAgy(opts.agy ?? 'agy', ['plugin', 'install', outDir], { stdio: 'inherit' });
+      const run = spawnAgy(resolveAgyExecutable(opts.agy).command, ['plugin', 'install', outDir], { stdio: 'inherit' });
       if (run.status !== 0) return run.status ?? 1;
       console.log('Installed. Antigravity picks up newly installed plugins automatically within a few seconds (no restart needed).');
     }

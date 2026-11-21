@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { auditPlugin } from '../lib/static-auditor.mjs';
+import { resolveAgyExecutable, spawnAgy } from '../lib/transpiler-engine.mjs';
 import { buildPlugin, COPIED } from '../scripts/build-plugin.mjs';
 import { tempDir } from './temp.mjs';
 
@@ -15,7 +16,8 @@ const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const files = (dir, rel = '') => readdirSync(join(dir, rel), { withFileTypes: true }).flatMap((e) =>
   (e.isDirectory() ? files(dir, `${rel}${e.name}/`) : [`${rel}${e.name}`])).sort();
 const json = (dir, f) => JSON.parse(readFileSync(join(dir, f), 'utf8'));
-const hasAgy = spawnSync('agy', ['--version'], { encoding: 'utf8' }).status === 0;
+const resolvedAgy = resolveAgyExecutable();
+const hasAgy = resolvedAgy.version !== null;
 
 test('build: plugin/ plus copies of lib/, bin/ and the runtime; 7-key manifest at the package version', () => {
   const { dir, version, tier } = buildPlugin({ outRoot: tempDir('porter-build-'), tar: false });
@@ -61,10 +63,11 @@ test('build: the tarball holds one top folder, with its sha256 beside it', () =>
   assert.equal(readFileSync(`${tarball}.sha256`, 'utf8'), `${sha256}  ${tarball.split(/[\\/]/).pop()}\n`);
 });
 
-test('agy plugin validate --strict accepts the built plugin', { skip: !hasAgy && 'agy not on PATH' }, () => {
+const strictSkip = (!hasAgy && 'agy not on PATH') || (!resolvedAgy.supportsSandbox && `resolved agy (${resolvedAgy.version}) < 1.5.13`);
+test('agy plugin validate --strict accepts the built plugin', { skip: strictSkip }, () => {
   const { dir } = buildPlugin({ outRoot: tempDir('porter-build-'), tar: false });
   const home = tempDir('porter-home-');
-  const run = spawnSync('agy', ['plugin', 'validate', dir, '--strict', '--json'], {
+  const run = spawnAgy(resolvedAgy.command, ['plugin', 'validate', dir, '--strict', '--json'], {
     encoding: 'utf8', env: { ...process.env, HOME: home, USERPROFILE: home, NO_COLOR: '1' },
   });
   assert.equal(run.status, 0, run.stdout + run.stderr);

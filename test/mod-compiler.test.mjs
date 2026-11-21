@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { validateSidecarJson } from 'antigravity-sidecar-kit/validator';
 
 import { compileHooks, writeHookPort } from '../lib/hook-compiler.mjs';
 import { detect } from '../lib/detector.mjs';
@@ -139,5 +142,48 @@ test('PORTER-06: modHooks compiles external mcp__* tool.call hooks while excludi
   assert.equal(events.PreToolUse[0].matcher, 'call_mcp_tool|mcp_github_create_issue|mcp_tool');
   assert.equal(events.PostToolUse?.length, 1);
   assert.equal(events.PostToolUse[0].matcher, 'call_mcp_tool|mcp_github_create_issue|mcp_tool');
+});
+
+test('compileMods writes sandbox: { disable_sandbox: true } by default and omits it with a warning when supportsSandbox is false', () => {
+  const src = tempDir('porter-sandbox-src-');
+  cpSync(fixture('claude-mod-transcript'), src, { recursive: true });
+  writeFileSync(join(src, 'hooks/register.js'), "export function register(on) {\n  on('ui.render', { component: 'Pane' }, async () => null)\n}\n");
+  const uiMods = detect(src).uiMods;
+
+  const defaultOut = tempDir('porter-sandbox-default-');
+  const defaultReport = compileMods(uiMods, { srcDir: src, pluginDir: defaultOut, slug: 'sandbox-mod', sourceName: 'sandbox-mod' });
+  const defaultSidecar = json(defaultOut, 'sidecars/pane/sidecar.json');
+  assert.deepEqual(defaultSidecar.sandbox, { disable_sandbox: true });
+  assert.deepEqual(validateSidecarJson(defaultSidecar, { targetDir: join(defaultOut, 'sidecars/pane') }), {
+    valid: true,
+    errors: [],
+    warnings: [],
+  });
+  assert.ok(!defaultReport.warnings.some((w) => w.includes('omitted sidecar.json "sandbox"')));
+
+  const legacyOut = tempDir('porter-sandbox-legacy-');
+  const legacyReport = compileMods(uiMods, {
+    srcDir: src,
+    pluginDir: legacyOut,
+    slug: 'sandbox-mod',
+    sourceName: 'sandbox-mod',
+    supportsSandbox: false,
+    agyVersion: '1.5.4',
+  });
+  const legacySidecar = json(legacyOut, 'sidecars/pane/sidecar.json');
+  assert.equal('sandbox' in legacySidecar, false);
+  assert.deepEqual(legacyReport.warnings, [
+    'ui-mod:hooks/register.js: omitted sidecar.json "sandbox" because resolved agy (1.5.4) is older than 1.5.13',
+  ]);
+});
+
+test('plugin/sidecars/cockpit/sidecar.json contains sandbox: { disable_sandbox: true } and passes validateSidecarJson', () => {
+  const cockpitDir = fileURLToPath(new URL('../plugin/sidecars/cockpit', import.meta.url));
+  const cockpitSidecar = JSON.parse(readFileSync(join(cockpitDir, 'sidecar.json'), 'utf8'));
+  assert.deepEqual(cockpitSidecar.sandbox, { disable_sandbox: true });
+  assert.deepEqual(
+    validateSidecarJson(cockpitSidecar, { targetDir: cockpitDir, file: 'plugin/sidecars/cockpit/sidecar.json' }),
+    { valid: true, errors: [], warnings: [] },
+  );
 });
 
