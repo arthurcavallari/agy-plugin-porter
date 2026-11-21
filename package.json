@@ -73,7 +73,7 @@
     "build:plugin": "node scripts/build-plugin.mjs"
   },
   "devDependencies": {
-    "antigravity-sidecar-kit": "^1.8.0",
+    "antigravity-sidecar-kit": "^1.9.0",
     "linkedom": "^0.18.15"
   }
 }
