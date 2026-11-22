@@ -933,4 +933,95 @@ test('SEP-1865: markdown docs and code inside root or dot-prefixed skills/, rule
   assert.equal(inferTier(selfDir).reasons.some((r) => r.includes('MCP App')), false);
 });
 
+test('inferTier classifies native sidecar manifests across sidecars/*, root sidecar.json, and sidecars.json, escalating agent-control capabilities to TIER_3_AGENT_CONTROL', () => {
+  // 1. Read-only swarm_board-style sidecar (allows_user_interactions: false + get-conversation-metadata) stays TIER_2_LOCAL_TOOLING
+  const readOnlyDir = tmp();
+  write(readOnlyDir, 'plugin.json', JSON.stringify({ name: 'readonly-board' }));
+  write(readOnlyDir, 'sidecars/board/sidecar.json', JSON.stringify({
+    command: 'node',
+    args: ['main.mjs'],
+    has_web_ui: true,
+    agent_permissions: { allows_user_interactions: false },
+    sandbox: { disable_sandbox: true },
+  }));
+  write(readOnlyDir, 'sidecars/board/main.mjs', 'execFile("agentapi", ["get-conversation-metadata", id]);\n');
+  const roRes = inferTier(readOnlyDir);
+  assert.equal(roRes.tier, 'TIER_2_LOCAL_TOOLING');
+  assert.ok(roRes.reasons.some((r) => r.includes('disable_sandbox')), JSON.stringify(roRes.reasons));
+
+  // 2. builtin: "schedule" sidecar escalates to TIER_3_AGENT_CONTROL
+  const schedDir = tmp();
+  write(schedDir, 'plugin.json', JSON.stringify({ name: 'daily-pr' }));
+  write(schedDir, 'sidecars/cron/sidecar.json', JSON.stringify({
+    builtin: 'schedule',
+    args: ['CRON_TZ=UTC 0 9 * * *', 'Check PRs'],
+    restart_policy: 'always',
+  }));
+  const schedRes = inferTier(schedDir);
+  assert.equal(schedRes.tier, 'TIER_3_AGENT_CONTROL');
+  assert.ok(schedRes.reasons.some((r) => r.includes('schedule')), JSON.stringify(schedRes.reasons));
+
+  // 3. agent_permissions.allows_user_interactions: true escalates to TIER_3_AGENT_CONTROL
+  const interactiveDir = tmp();
+  write(interactiveDir, 'plugin.json', JSON.stringify({ name: 'interactive-pane' }));
+  write(interactiveDir, 'sidecars/pane/sidecar.json', JSON.stringify({
+    command: 'node',
+    args: ['server.mjs'],
+    agent_permissions: { allows_user_interactions: true },
+  }));
+  assert.equal(inferTier(interactiveDir).tier, 'TIER_3_AGENT_CONTROL');
+
+  // 4. agent_permissions.access_grants or non-empty workspace_uris escalates to TIER_3_AGENT_CONTROL (empty workspace_uris stays TIER_2)
+  const grantsDir = tmp();
+  write(grantsDir, 'plugin.json', JSON.stringify({ name: 'grants-pane' }));
+  write(grantsDir, 'sidecars/pane/sidecar.json', JSON.stringify({
+    command: 'node',
+    args: ['server.mjs'],
+    agent_permissions: { access_grants: ['command(gh pr list)'] },
+  }));
+  assert.equal(inferTier(grantsDir).tier, 'TIER_3_AGENT_CONTROL');
+
+  const emptyWsDir = tmp();
+  write(emptyWsDir, 'plugin.json', JSON.stringify({ name: 'empty-ws-pane' }));
+  write(emptyWsDir, 'sidecars/pane/sidecar.json', JSON.stringify({
+    command: 'node',
+    args: ['server.mjs'],
+    agent_permissions: { workspace_uris: [], allows_user_interactions: false },
+  }));
+  assert.equal(inferTier(emptyWsDir).tier, 'TIER_2_LOCAL_TOOLING');
+
+  const pregrantedWsDir = tmp();
+  write(pregrantedWsDir, 'plugin.json', JSON.stringify({ name: 'pregranted-ws-pane' }));
+  write(pregrantedWsDir, 'sidecars/pane/sidecar.json', JSON.stringify({
+    command: 'node',
+    args: ['server.mjs'],
+    agent_permissions: { workspace_uris: ['file:///Users/alice/prod'] },
+  }));
+  assert.equal(inferTier(pregrantedWsDir).tier, 'TIER_3_AGENT_CONTROL');
+
+  // 5. Root sidecar.json + runtime sidecar.agent.sendMessage escalates from TIER_1 -> TIER_3_AGENT_CONTROL
+  const rootScDir = tmp();
+  write(rootScDir, 'plugin.json', JSON.stringify({ name: 'root-sidecar-plugin' }));
+  write(rootScDir, 'sidecar.json', JSON.stringify({ command: 'node', args: ['server.mjs'] }));
+  write(rootScDir, 'ui.js', 'window.sidecar.agent.sendMessage("deploy now");\n');
+  assert.equal(inferTier(rootScDir).tier, 'TIER_3_AGENT_CONTROL');
+
+  // 6. sidecars.json in-tree read-only sidecar -> TIER_2_LOCAL_TOOLING; in-tree schedule sidecar -> TIER_3_AGENT_CONTROL; external path -> fail-closed TIER_3_AGENT_CONTROL
+  const cfgTier2Dir = tmp();
+  write(cfgTier2Dir, 'plugin.json', JSON.stringify({ name: 'cfg-tier2' }));
+  write(cfgTier2Dir, 'packages/panes/viewer/sidecar.json', JSON.stringify({
+    command: 'node',
+    args: ['index.mjs'],
+    agent_permissions: { allows_user_interactions: false },
+  }));
+  write(cfgTier2Dir, 'sidecars.json', JSON.stringify({ entries: [{ path: 'packages/panes' }] }));
+  assert.equal(inferTier(cfgTier2Dir).tier, 'TIER_2_LOCAL_TOOLING');
+
+  const cfgExternalDir = tmp();
+  write(cfgExternalDir, 'plugin.json', JSON.stringify({ name: 'cfg-external' }));
+  write(cfgExternalDir, 'sidecars.json', JSON.stringify({ entries: [{ path: '~/external-sidecars' }] }));
+  assert.equal(inferTier(cfgExternalDir).tier, 'TIER_3_AGENT_CONTROL');
+});
+
+
 

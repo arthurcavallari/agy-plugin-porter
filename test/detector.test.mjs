@@ -79,4 +79,12 @@ test('PRT-13: detect recognizes Agent Plugins 1.0.0 mcp.json ($schema) and sidec
   const found = detect(dir);
   assert.deepEqual(found.ecosystems, ['antigravity']);
   assert.equal(found.manifestless, false);
+
+  const rootScDir = tempDir('porter-root-sc-');
+  writeFileSync(join(rootScDir, 'sidecar.json'), JSON.stringify({ command: 'node', args: ['server.mjs'] }));
+  assert.deepEqual(detect(rootScDir).ecosystems, ['antigravity']);
+
+  const cfgScDir = tempDir('porter-cfg-sc-');
+  writeFileSync(join(cfgScDir, 'sidecars.json'), JSON.stringify({ entries: [{ path: 'packages/sidecars' }] }));
+  assert.deepEqual(detect(cfgScDir).ecosystems, ['antigravity']);
 });
