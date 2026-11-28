@@ -1021,6 +1021,30 @@ test('inferTier classifies native sidecar manifests across sidecars/*, root side
   write(cfgExternalDir, 'plugin.json', JSON.stringify({ name: 'cfg-external' }));
   write(cfgExternalDir, 'sidecars.json', JSON.stringify({ entries: [{ path: '~/external-sidecars' }] }));
   assert.equal(inferTier(cfgExternalDir).tier, 'TIER_3_AGENT_CONTROL');
+
+  // 7. 2.35.2 sandbox.allowed_rpcs / allowedRpcs surfaces in reasons without escalating TIER_2_LOCAL_TOOLING
+  const rpcAllowDir = tmp();
+  write(rpcAllowDir, 'plugin.json', JSON.stringify({ name: 'rpc-allowlist-plugin' }));
+  write(rpcAllowDir, 'sidecars/status-pane/sidecar.json', JSON.stringify({
+    command: 'node',
+    args: ['server.mjs'],
+    sandbox: { allowed_rpcs: ['GetUserStatus', 'ListConversations'] },
+  }));
+  write(rpcAllowDir, 'sidecars/camel-pane/sidecar.json', JSON.stringify({
+    command: 'node',
+    args: ['server.mjs'],
+    sandbox: { allowedRpcs: ['GetMendelFlags', '', 42] },
+  }));
+  const rpcAllowRes = inferTier(rpcAllowDir);
+  assert.equal(rpcAllowRes.tier, 'TIER_2_LOCAL_TOOLING');
+  assert.ok(
+    rpcAllowRes.reasons.includes('sidecar status-pane: declares sandbox RPC allowlist (GetUserStatus, ListConversations)'),
+    JSON.stringify(rpcAllowRes.reasons)
+  );
+  assert.ok(
+    rpcAllowRes.reasons.includes('sidecar camel-pane: declares sandbox RPC allowlist (GetMendelFlags)'),
+    JSON.stringify(rpcAllowRes.reasons)
+  );
 });
 
 
